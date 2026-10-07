@@ -1,0 +1,415 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+enum AssetType {
+  AGENT
+  MCP_SERVER
+  SKILL
+  RULE
+  GUIDE
+  HOOK
+}
+
+enum BusinessArea {
+  HEALTHCARE
+  LIFE_SCIENCE
+  ELECTRONICS
+  ENABLING_FUNCTIONS
+  GLOBAL_CROSS_SECTOR
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  NOT_ASSESSED
+}
+
+enum LifecycleStage {
+  IDEA
+  PILOT
+  PRODUCTION
+  RETIRING
+  RETIRED
+}
+
+enum AssessmentStatus {
+  ASSESSED
+  PENDING
+  EXPIRED
+}
+
+enum AccessLevel {
+  OPEN
+  APPROVAL_REQUIRED
+  RESTRICTED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReviewStatus {
+  OPEN
+  DUE_SOON
+  OVERDUE
+  COMPLETED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Agent {
+  id                    String           @id @default(cuid())
+  slug                  String           @unique
+  name                  String
+  shortDescription      String
+  description           String
+  agentId               String
+  solutionType          String           @default("Agent Asset")
+  businessArea          BusinessArea
+  businessCapability    String
+  useCase               String
+  businessCriticality   String
+  valueBenefit          String
+  costNote              String?
+  platform              String
+  lifecycleStage        LifecycleStage
+  registrationStatus    String           @default("Registered")
+  approvalStatus        String           @default("Approved")
+  businessOwner         String
+  businessOwnerEmail    String
+  technicalOwner        String
+  technicalOwnerEmail   String
+  backupOwner           String?
+  backupOwnerEmail      String?
+  supportContact        String?
+  riskLevel             RiskLevel
+  riskAssessmentStatus  AssessmentStatus
+  dataClassification    String
+  personalData          Boolean          @default(false)
+  gxpRelevant           Boolean          @default(false)
+  cyberReviewStatus     String
+  responsibleAiStatus   AssessmentStatus
+  humanOversight        String
+  certified             Boolean          @default(false)
+  accessLevel           AccessLevel
+  accessLeadTime        String?
+  version               String
+  framework             String?
+  model                 String?
+  autonomyLevel         String?
+  invocationType        String?
+  environments          String
+  monthlyRuns           Int              @default(0)
+  successRate           Float            @default(0)
+  averageLatencyMs      Int              @default(0)
+  monthlyCost           String?
+  rating                Float            @default(0)
+  ratingCount           Int              @default(0)
+  subscriberCount       Int              @default(0)
+  reviewCadence         String?
+  nextReviewAt          DateTime?
+  tags                  String
+  featured              Boolean          @default(false)
+  capabilityCategory    String?
+  usageLimitations      String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  mcpServers            AgentMcpServer[]
+  skills                AgentSkill[]
+  rules                 AgentRule[]
+  guides                AgentGuide[]
+  hooks                 AgentHook[]
+  dependencies          AgentDependency[]  @relation("AgentDeps")
+  dependents            AgentDependency[]  @relation("DependentOf")
+  accessRequests        AccessRequest[]
+  activities            Activity[]
+  savedItems            SavedItem[]
+  reviews               ReviewItem[]
+  capabilities          AgentCapability[]
+  dataAssets            AgentDataAsset[]
+  knowledgeSources      KnowledgeSource[]
+  faqItems              FaqItem[]
+}
+
+model McpServer {
+  id               String    @id @default(cuid())
+  slug             String    @unique
+  name             String
+  shortDescription String
+  description      String
+  origin           String
+  owner            String
+  ownerEmail       String
+  status           String
+  authType         String
+  environments     String
+  riskLevel        RiskLevel
+  classification   String
+  toolCount        Int       @default(0)
+  version          String
+  endpoint         String
+  platform         String?
+  tags             String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tools            McpTool[]
+  agents           AgentMcpServer[]
+  savedItems       SavedItem[]
+  activities       Activity[]
+}
+
+model McpTool {
+  id          String    @id @default(cuid())
+  name        String
+  description String
+  mcpServerId String
+  mcpServer   McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  shortDescription String
+  description      String
+  category         String
+  owner            String
+  ownerEmail       String
+  version          String
+  status           String
+  tags             String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agents           AgentSkill[]
+  savedItems       SavedItem[]
+}
+
+model Rule {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  shortDescription String
+  description      String
+  severity         Severity
+  scope            String
+  status           String
+  owner            String
+  ownerEmail       String
+  policyCategory   String
+  tags             String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agents           AgentRule[]
+  savedItems       SavedItem[]
+}
+
+model Guide {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  shortDescription String
+  description      String
+  content          String
+  category         String
+  audience         String
+  readingTimeMin   Int
+  tags             String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agents           AgentGuide[]
+  savedItems       SavedItem[]
+}
+
+model Hook {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  shortDescription String
+  description      String
+  triggerEvent     String
+  action           String
+  owner            String
+  ownerEmail       String
+  status           String
+  scope            String
+  enabled          Boolean  @default(true)
+  tags             String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agents           AgentHook[]
+  savedItems       SavedItem[]
+}
+
+model AgentMcpServer {
+  agentId      String
+  mcpServerId  String
+  agent        Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  mcpServer    McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, mcpServerId])
+}
+
+model AgentSkill {
+  agentId String
+  skillId String
+  agent   Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  skill   Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, skillId])
+}
+
+model AgentRule {
+  agentId String
+  ruleId  String
+  agent   Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  rule    Rule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, ruleId])
+}
+
+model AgentGuide {
+  agentId String
+  guideId String
+  agent   Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  guide   Guide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, guideId])
+}
+
+model AgentHook {
+  agentId String
+  hookId  String
+  agent   Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  hook    Hook  @relation(fields: [hookId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, hookId])
+}
+
+model AgentDependency {
+  agentId          String
+  dependsOnAgentId String
+  agent            Agent  @relation("AgentDeps", fields: [agentId], references: [id], onDelete: Cascade)
+  dependsOnAgent   Agent  @relation("DependentOf", fields: [dependsOnAgentId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, dependsOnAgentId])
+}
+
+model AgentCapability {
+  id          String @id @default(cuid())
+  agentId     String
+  name        String
+  description String
+  agent       Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentDataAsset {
+  id          String @id @default(cuid())
+  agentId     String
+  name        String
+  description String
+  direction   String
+  agent       Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeSource {
+  id          String @id @default(cuid())
+  agentId     String
+  name        String
+  description String
+  agent       Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model FaqItem {
+  id       String @id @default(cuid())
+  agentId  String
+  question String
+  answer   String
+  agent    Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AccessRequest {
+  id            String        @id @default(cuid())
+  assetType     AssetType
+  assetName     String
+  assetSlug     String?
+  agentId       String?
+  reason        String
+  businessCase  String
+  environment   String
+  status        RequestStatus @default(PENDING)
+  approver      String?
+  expectedAt    DateTime?
+  requestedAt   DateTime      @default(now())
+  requester     String        @default("Christina H.")
+  agent         Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+}
+
+model Activity {
+  id          String    @id @default(cuid())
+  title       String
+  description String
+  actor       String
+  assetType   AssetType?
+  assetName   String?
+  assetSlug   String?
+  agentId     String?
+  mcpServerId String?
+  createdAt   DateTime  @default(now())
+  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  mcpServer   McpServer? @relation(fields: [mcpServerId], references: [id], onDelete: SetNull)
+}
+
+model SavedItem {
+  id          String    @id @default(cuid())
+  assetType   AssetType
+  assetId     String
+  assetSlug   String
+  assetName   String
+  userKey     String    @default("demo-user")
+  createdAt   DateTime  @default(now())
+  agentId     String?
+  mcpServerId String?
+  skillId     String?
+  ruleId      String?
+  guideId     String?
+  hookId      String?
+  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  mcpServer   McpServer? @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  skill       Skill?    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  rule        Rule?     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  guide       Guide?    @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  hook        Hook?     @relation(fields: [hookId], references: [id], onDelete: Cascade)
+
+  @@unique([userKey, assetType, assetId])
+}
+
+model ReviewItem {
+  id          String       @id @default(cuid())
+  agentId     String
+  reason      String
+  dueDate     DateTime
+  status      ReviewStatus
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  agent       Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
