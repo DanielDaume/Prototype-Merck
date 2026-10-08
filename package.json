@@ -6,12 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:up": "docker compose up -d db",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma generate && node scripts/reset-db.mjs && prisma db push && tsx prisma/seed.ts",
-    "typecheck": "tsc --noEmit"
+    "db:setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -19,9 +21,11 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.484.0",
     "next": "^15.2.4",
+    "prisma": "^6.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.0.2"
+    "tailwind-merge": "^3.0.2",
+    "tsx": "^4.19.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.0",
@@ -31,9 +35,7 @@
     "@types/react-dom": "^19.0.4",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.4",
-    "prisma": "^6.5.0",
     "tailwindcss": "^4.0.17",
-    "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }
 }

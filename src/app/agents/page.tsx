@@ -27,6 +27,11 @@ export default async function AgentsPage() {
         riskLevel: a.riskLevel,
         certified: a.certified,
         saved: savedIds.has(a.id),
+        lifecycleStage: a.lifecycleStage,
+        accessLevel: a.accessLevel,
+        usagePolicy: a.usagePolicy,
+        businessOwner: a.businessOwner,
+        monthlyCost: a.monthlyCost,
       }))}
     />
   );

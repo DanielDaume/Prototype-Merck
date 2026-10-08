@@ -1,18 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { Layers } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/providers/ToastProvider";
-
-const integrations = [
-  { name: "UPTIMIZE Foundry", status: "Connected", tone: "green" as const },
-  { name: "myGPT", status: "Connected", tone: "green" as const },
-  { name: "HIVE", status: "Planned", tone: "amber" as const },
-  { name: "Microsoft Copilot Studio", status: "Planned", tone: "amber" as const },
-  { name: "Salesforce", status: "Not configured", tone: "gray" as const },
-  { name: "SAP Joule", status: "Not configured", tone: "gray" as const },
-  { name: "UiPath", status: "Not configured", tone: "gray" as const },
-];
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -57,6 +48,7 @@ export default function SettingsPage() {
             "Require risk assessment",
             "Require backup owner",
             "Require lifecycle state",
+            "Require linked use case for production agents",
           ].map((label) => (
             <label key={label} className="flex items-center gap-2 text-sm text-navy">
               <input
@@ -87,20 +79,21 @@ export default function SettingsPage() {
       </section>
 
       <section className="rounded-[12px] border border-border bg-white p-5 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-navy">Integrations</h2>
-        <p className="mb-4 text-[12px] text-muted">
-          Demo integration status — no live connections are configured.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {integrations.map((item) => (
-            <div key={item.name} className="rounded-[10px] border border-border p-3">
-              <div className="text-sm font-medium text-navy">{item.name}</div>
-              <div className="mt-2">
-                <StatusBadge tone={item.tone}>{item.status}</StatusBadge>
-              </div>
-            </div>
-          ))}
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-navy">Platforms & coverage</h2>
+            <p className="mt-1 text-[12px] text-muted">
+              Source coverage is documented as a workshop snapshot — not as live integration status.
+            </p>
+          </div>
+          <Layers className="h-4 w-4 shrink-0 text-primary" />
         </div>
+        <Link
+          href="/platforms"
+          className="mt-4 inline-flex items-center rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-bg"
+        >
+          Open Platforms & Coverage
+        </Link>
       </section>
     </div>
   );

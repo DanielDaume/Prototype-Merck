@@ -2,12 +2,39 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Bot, Server, Sparkles, Shield, BookOpen, Webhook, Loader2 } from "lucide-react";
+import {
+  Search,
+  Bot,
+  Boxes,
+  Briefcase,
+  Server,
+  Sparkles,
+  Shield,
+  BookOpen,
+  Webhook,
+  Loader2,
+  Grid3X3,
+  Package,
+  BookMarked,
+  Target,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { assetTypeLabels } from "@/lib/labels";
 
 type SearchResult = {
-  type: "AGENT" | "MCP_SERVER" | "SKILL" | "RULE" | "GUIDE" | "HOOK";
+  type:
+    | "AGENT"
+    | "AGENT_PRODUCT"
+    | "USE_CASE"
+    | "MCP_SERVER"
+    | "SKILL"
+    | "RULE"
+    | "GUIDE"
+    | "HOOK"
+    | "DATA_ASSET"
+    | "DATA_PRODUCT"
+    | "GLOSSARY_TERM"
+    | "DATA_DOMAIN";
   id: string;
   slug: string;
   name: string;
@@ -17,11 +44,17 @@ type SearchResult = {
 
 const icons = {
   AGENT: Bot,
+  AGENT_PRODUCT: Boxes,
+  USE_CASE: Briefcase,
   MCP_SERVER: Server,
   SKILL: Sparkles,
   RULE: Shield,
   GUIDE: BookOpen,
   HOOK: Webhook,
+  DATA_ASSET: Grid3X3,
+  DATA_PRODUCT: Package,
+  GLOSSARY_TERM: BookMarked,
+  DATA_DOMAIN: Target,
 };
 
 export function GlobalSearch({

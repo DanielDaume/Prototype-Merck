@@ -33,11 +33,17 @@ export async function POST(req: NextRequest) {
     assetSlug: string;
     assetName: string;
     agentId?: string;
+    agentProductId?: string;
     mcpServerId?: string;
     skillId?: string;
     ruleId?: string;
     guideId?: string;
     hookId?: string;
+    useCaseId?: string;
+    dataAssetId?: string;
+    dataProductId?: string;
+    glossaryTermId?: string;
+    dataDomainId?: string;
   } = {
     userKey: USER,
     assetType,
@@ -47,11 +53,17 @@ export async function POST(req: NextRequest) {
   };
 
   if (assetType === "AGENT") data.agentId = assetId;
+  if (assetType === "AGENT_PRODUCT") data.agentProductId = assetId;
   if (assetType === "MCP_SERVER") data.mcpServerId = assetId;
   if (assetType === "SKILL") data.skillId = assetId;
   if (assetType === "RULE") data.ruleId = assetId;
   if (assetType === "GUIDE") data.guideId = assetId;
   if (assetType === "HOOK") data.hookId = assetId;
+  if (assetType === "USE_CASE") data.useCaseId = assetId;
+  if (assetType === "DATA_ASSET") data.dataAssetId = assetId;
+  if (assetType === "DATA_PRODUCT") data.dataProductId = assetId;
+  if (assetType === "GLOSSARY_TERM") data.glossaryTermId = assetId;
+  if (assetType === "DATA_DOMAIN") data.dataDomainId = assetId;
 
   await prisma.savedItem.create({ data });
   return NextResponse.json({ saved: true });

@@ -2,9 +2,8 @@ import Link from "next/link";
 import {
   BadgeCheck,
   Bot,
-  ClipboardCheck,
+  Boxes,
   Layers,
-  RefreshCcw,
   Server,
   Star,
 } from "lucide-react";
@@ -13,28 +12,44 @@ import { StatCard } from "@/components/cards/StatCard";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { RiskBadge } from "@/components/ui/RiskBadge";
 import { CertificationBadge } from "@/components/ui/CertificationBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { businessAreaLabels, capabilityCategories } from "@/lib/labels";
 import { formatNumber, parseTags, relativeTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [agents, mcpCount, pendingReviews, platforms, featured, recent, riskGroups, lifecycleGroups, assessmentGroups] =
-    await Promise.all([
-      prisma.agent.findMany(),
-      prisma.mcpServer.count(),
-      prisma.reviewItem.count({ where: { status: { in: ["OPEN", "DUE_SOON", "OVERDUE"] } } }),
-      prisma.agent.findMany({ select: { platform: true }, distinct: ["platform"] }),
-      prisma.agent.findMany({
-        where: { featured: true },
-        orderBy: { rating: "desc" },
-        take: 3,
-      }),
-      prisma.agent.findMany({ orderBy: { updatedAt: "desc" }, take: 6 }),
-      prisma.agent.groupBy({ by: ["riskLevel"], _count: true }),
-      prisma.agent.groupBy({ by: ["lifecycleStage"], _count: true }),
-      prisma.agent.groupBy({ by: ["riskAssessmentStatus"], _count: true }),
-    ]);
+  const [
+    agents,
+    mcpCount,
+    productCount,
+    platforms,
+    featured,
+    recent,
+    riskGroups,
+    lifecycleGroups,
+    assessmentGroups,
+    reuseCandidates,
+  ] = await Promise.all([
+    prisma.agent.findMany(),
+    prisma.mcpServer.count(),
+    prisma.agentProduct.count(),
+    prisma.platformSource.count(),
+    prisma.agent.findMany({
+      where: { featured: true },
+      orderBy: { rating: "desc" },
+      take: 3,
+    }),
+    prisma.agent.findMany({ orderBy: { updatedAt: "desc" }, take: 6 }),
+    prisma.agent.groupBy({ by: ["riskLevel"], _count: true }),
+    prisma.agent.groupBy({ by: ["lifecycleStage"], _count: true }),
+    prisma.agent.groupBy({ by: ["riskAssessmentStatus"], _count: true }),
+    Promise.all([
+      prisma.agent.findUnique({ where: { slug: "invoice-triage-agent" } }),
+      prisma.agentProduct.findUnique({ where: { slug: "finance-operations-assistant" } }),
+      prisma.agent.findUnique({ where: { slug: "vendor-matching-agent" } }),
+    ]),
+  ]);
 
   const certified = agents.filter((a) => a.certified).length;
   const total = agents.length || 1;
@@ -43,6 +58,43 @@ export default async function HomePage() {
   const lifeMap = Object.fromEntries(lifecycleGroups.map((g) => [g.lifecycleStage, g._count]));
   const assessMap = Object.fromEntries(assessmentGroups.map((g) => [g.riskAssessmentStatus, g._count]));
 
+  const [invoiceAgent, financeProduct, vendorAgent] = reuseCandidates;
+  const reuseItems = [
+    invoiceAgent
+      ? {
+          kind: "agent" as const,
+          href: `/agents/${invoiceAgent.slug}`,
+          name: invoiceAgent.name,
+          description: invoiceAgent.shortDescription,
+          meta: invoiceAgent.platform,
+          riskLevel: invoiceAgent.riskLevel,
+          certified: invoiceAgent.certified,
+        }
+      : null,
+    financeProduct
+      ? {
+          kind: "product" as const,
+          href: `/agent-products/${financeProduct.slug}`,
+          name: financeProduct.name,
+          description: financeProduct.shortDescription,
+          meta: financeProduct.platform || "Agent Product",
+          riskLevel: financeProduct.riskLevel,
+          certified: financeProduct.certified,
+        }
+      : null,
+    vendorAgent
+      ? {
+          kind: "agent" as const,
+          href: `/agents/${vendorAgent.slug}`,
+          name: vendorAgent.name,
+          description: vendorAgent.shortDescription,
+          meta: vendorAgent.platform,
+          riskLevel: vendorAgent.riskLevel,
+          certified: vendorAgent.certified,
+        }
+      : null,
+  ].filter(Boolean);
+
   return (
     <div className="space-y-8">
       <section className="rounded-[14px] border border-border bg-white px-6 py-7 shadow-sm">
@@ -50,23 +102,26 @@ export default async function HomePage() {
           Prototype — demo data
         </div>
         <h1 className="text-[28px] font-semibold tracking-tight text-navy">AI Agent Central</h1>
-        <p className="mt-1 text-sm text-muted">Discover, assess and reuse enterprise AI capabilities</p>
+        <p className="mt-1 text-sm text-muted">Discover, assess and reuse enterprise AI capabilities.</p>
+        <p className="mt-1 text-[13px] text-[#4A5568]">
+          One place to discover and reuse AI capabilities.
+        </p>
         <div className="mt-5 max-w-3xl">
           <GlobalSearch
             large
-            placeholder="Search for invoice automation, SAP knowledge, clinical research..."
+            placeholder="Search for invoice automation, clinical research, SAP knowledge..."
           />
           <p className="mt-2 text-[12px] text-muted">What do you want to accomplish?</p>
         </div>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <StatCard label="Registered AI Agents" value={agents.length} icon={Bot} />
-        <StatCard label="Certified Agents" value={certified} icon={BadgeCheck} />
-        <StatCard label="MCP Servers" value={mcpCount} icon={Server} />
-        <StatCard label="Pending Reviews" value={pendingReviews} icon={ClipboardCheck} />
-        <StatCard label="Reuse Opportunities" value={Math.max(agents.length - 4, 8)} icon={RefreshCcw} hint="Estimated composable assets" />
-        <StatCard label="Platforms Covered" value={platforms.length} icon={Layers} />
+        <div className="mt-4 flex flex-wrap gap-3 text-[12px]">
+          <Link href="/agent-products" className="font-medium text-primary hover:underline">
+            Browse agent products
+          </Link>
+          <span className="text-border">·</span>
+          <Link href="/platforms" className="font-medium text-primary hover:underline">
+            Platforms & coverage
+          </Link>
+        </div>
       </section>
 
       <section>
@@ -116,6 +171,44 @@ export default async function HomePage() {
       </section>
 
       <section>
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-navy">Reuse before build</h2>
+            <p className="text-sm text-muted">
+              Check whether a reusable capability already exists before creating a new agent.
+            </p>
+          </div>
+          <Link href="/agent-products" className="text-sm font-medium text-primary hover:underline">
+            View products
+          </Link>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {reuseItems.map((item) =>
+            item ? (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-[12px] border border-border bg-white p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md"
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <StatusBadge tone={item.kind === "product" ? "purple" : "blue"}>
+                    {item.kind === "product" ? "Agent Product" : "AI Agent"}
+                  </StatusBadge>
+                </div>
+                <h3 className="text-[16px] font-semibold text-navy">{item.name}</h3>
+                <p className="mt-1 line-clamp-2 text-[13px] text-[#4A5568]">{item.description}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                  <span className="font-medium text-navy">{item.meta}</span>
+                  <RiskBadge level={item.riskLevel} />
+                  <CertificationBadge certified={item.certified} />
+                </div>
+              </Link>
+            ) : null
+          )}
+        </div>
+      </section>
+
+      <section>
         <h2 className="mb-1 text-lg font-semibold text-navy">Browse by capability</h2>
         <p className="mb-3 text-sm text-muted">Start from a business outcome, not a platform.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -156,8 +249,13 @@ export default async function HomePage() {
         </section>
 
         <section className="rounded-[12px] border border-border bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-navy">Governance overview</h2>
-          <div className="space-y-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-navy">Governance overview</h2>
+            <Link href="/platforms" className="text-[12px] font-medium text-primary hover:underline">
+              Coverage
+            </Link>
+          </div>
+          <div className="space-y-4">
             <BarGroup
               title="Risk"
               items={[
@@ -188,6 +286,29 @@ export default async function HomePage() {
           </div>
         </section>
       </div>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-navy">Repository snapshot</h2>
+            <p className="text-[12px] text-muted">Modest counts for orientation — not a live ops dashboard.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="AI Agents" value={agents.length} icon={Bot} />
+          <StatCard label="Agent Products" value={productCount} icon={Boxes} />
+          <StatCard label="MCP Servers" value={mcpCount} icon={Server} />
+          <StatCard label="Certified Agents" value={certified} icon={BadgeCheck} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+          <Layers className="h-3.5 w-3.5" />
+          <span>{platforms} platform sources tracked</span>
+          <span>·</span>
+          <Link href="/platforms" className="font-medium text-primary hover:underline">
+            View coverage
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
@@ -203,15 +324,15 @@ function BarGroup({
 }) {
   return (
     <div>
-      <div className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted">{title}</div>
-      <div className="space-y-2">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{title}</div>
+      <div className="space-y-1.5">
         {items.map((item) => (
           <div key={item.label}>
-            <div className="mb-1 flex justify-between text-[12px]">
+            <div className="mb-0.5 flex justify-between text-[11px]">
               <span className="text-navy">{item.label}</span>
               <span className="text-muted">{item.value}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[#EEF2F6]">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#EEF2F6]">
               <div
                 className={`h-full rounded-full ${item.color}`}
                 style={{ width: `${Math.max(4, (item.value / total) * 100)}%` }}

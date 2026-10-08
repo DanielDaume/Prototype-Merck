@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, type SidebarCounts } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { cn } from "@/lib/utils";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  counts,
+}: {
+  children: React.ReactNode;
+  counts?: SidebarCounts;
+}) {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -30,8 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Sidebar collapsed={collapsed} onToggle={toggle} />
-      <div className={cn("transition-all duration-200", collapsed ? "pl-[68px]" : "pl-[240px]")}>
+      <Sidebar collapsed={collapsed} onToggle={toggle} counts={counts} />
+      <div className={cn("transition-all duration-200", collapsed ? "pl-[68px]" : "pl-[228px]")}>
         <Topbar />
         <main className="px-4 py-5 md:px-6">
           <div className="mx-auto w-full max-w-[1280px]">{children}</div>

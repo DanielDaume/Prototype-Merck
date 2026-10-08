@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
       reason: String(body.reason || ""),
       businessCase: String(body.businessCase || ""),
       environment: String(body.environment || "Prod"),
+      expectedUsage: body.expectedUsage ? String(body.expectedUsage) : null,
       approver: "Pending assignment",
       expectedAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
       requester: "Christina H.",

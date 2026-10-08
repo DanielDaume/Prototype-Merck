@@ -1,18 +1,37 @@
 name: ai-agent-central
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentcentral
+      POSTGRES_PASSWORD: agentcentral
+      POSTGRES_DB: agentcentral
+    ports:
+      - "5433:5432"
+    volumes:
+      - agentcentral_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentcentral -d agentcentral"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   app:
     build: .
     ports:
       - "3002:3000"
-    volumes:
-      - ai-agent-central_data:/app/data
     environment:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
-      DATABASE_URL: "file:/app/data/dev.db"
+      DATABASE_URL: "postgresql://agentcentral:agentcentral@db:5432/agentcentral?schema=public"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  ai-agent-central_data:
+  agentcentral_pgdata:

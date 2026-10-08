@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ReviewsClient } from "@/components/reviews/ReviewsClient";
@@ -14,8 +15,14 @@ export default async function ReviewsPage() {
     <div>
       <PageHeader
         title="Reviews"
-        description="Governance review inbox for lifecycle and risk reassessment."
+        description="Lifecycle and risk reassessment inbox. For AI change governance, use the CAB Workspace as the primary review surface."
       />
+      <p className="mb-4 text-[13px] text-muted">
+        Looking for change approvals?{" "}
+        <Link href="/cab" className="font-medium text-primary hover:underline">
+          Open CAB Workspace
+        </Link>
+      </p>
       <ReviewsClient
         reviews={reviews.map((r) => ({
           id: r.id,

@@ -25,6 +25,7 @@ export function RequestAccessModal({
   const [reason, setReason] = useState("");
   const [businessCase, setBusinessCase] = useState("");
   const [environment, setEnvironment] = useState("Prod");
+  const [expectedUsage, setExpectedUsage] = useState("");
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -47,6 +48,7 @@ export function RequestAccessModal({
           reason,
           businessCase,
           environment,
+          expectedUsage: expectedUsage || undefined,
         }),
       });
       if (!res.ok) throw new Error("failed");
@@ -54,6 +56,7 @@ export function RequestAccessModal({
       onClose();
       setReason("");
       setBusinessCase("");
+      setExpectedUsage("");
       router.refresh();
       router.push("/requests");
     } catch {
@@ -108,6 +111,18 @@ export function RequestAccessModal({
               <option>Prod</option>
             </select>
           </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-medium text-muted">Expected usage (optional)</span>
+            <input
+              value={expectedUsage}
+              onChange={(e) => setExpectedUsage(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+              placeholder="e.g. ~200 runs / month for AP team"
+            />
+          </label>
+          <p className="text-[12px] text-muted">
+            Visibility and usage access are evaluated separately. Submitting requests usage permission for this asset.
+          </p>
         </div>
         <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
           <button

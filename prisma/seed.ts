@@ -3,8 +3,10 @@ import {
   AssessmentStatus,
   AssetType,
   BusinessArea,
+  IngestionMode,
   LifecycleStage,
   PrismaClient,
+  RepositoryStatus,
   RequestStatus,
   ReviewStatus,
   RiskLevel,
@@ -25,10 +27,22 @@ async function main() {
   await prisma.agentSkill.deleteMany();
   await prisma.agentMcpServer.deleteMany();
   await prisma.mcpTool.deleteMany();
+  await prisma.issueFlag.deleteMany();
+  await prisma.agentProductAgent.deleteMany();
   await prisma.reviewItem.deleteMany();
   await prisma.savedItem.deleteMany();
   await prisma.accessRequest.deleteMany();
   await prisma.activity.deleteMany();
+  await prisma.agentProduct.deleteMany();
+  await prisma.useCase.deleteMany();
+  await prisma.platformSource.deleteMany();
+  await prisma.agentCatalogDataAsset.deleteMany();
+  await prisma.agentCatalogDataProduct.deleteMany();
+  await prisma.cabChange.deleteMany();
+  await prisma.catalogDataAsset.deleteMany();
+  await prisma.catalogDataProduct.deleteMany();
+  await prisma.glossaryTerm.deleteMany();
+  await prisma.dataDomain.deleteMany();
   await prisma.agent.deleteMany();
   await prisma.mcpServer.deleteMany();
   await prisma.skill.deleteMany();
@@ -210,9 +224,38 @@ async function main() {
         },
       },
     }),
+    prisma.mcpServer.create({
+      data: {
+        slug: "jira-mcp",
+        name: "Jira MCP",
+        shortDescription: "Create and update Jira issues for exception and triage workflows.",
+        description:
+          "MCP server for Jira project tracking used by finance and operations agents to raise exception tickets, update statuses and retrieve issue context.",
+        origin: "Internal",
+        owner: "Enterprise Collaboration Platforms",
+        ownerEmail: "collab.platforms@example.com",
+        status: "Active",
+        authType: "OAuth 2.0 / Service Principal",
+        environments: "Dev, Test, Prod",
+        riskLevel: RiskLevel.LOW,
+        classification: "Internal",
+        toolCount: 3,
+        version: "1.1.0",
+        endpoint: "https://mcp.internal.example/jira",
+        platform: "UPTIMIZE Agents",
+        tags: "Jira,Tickets,Workflow,MCP",
+        tools: {
+          create: [
+            { name: "create_issue", description: "Create a Jira issue in an approved project." },
+            { name: "update_issue", description: "Update issue fields or status." },
+            { name: "get_issue", description: "Retrieve issue details by key." },
+          ],
+        },
+      },
+    }),
   ]);
 
-  const [sapMcp, searchMcp, snowMcp, clinicalMcp, sharepointMcp, pubmedMcp] = mcpServers;
+  const [sapMcp, searchMcp, snowMcp, clinicalMcp, sharepointMcp, pubmedMcp, jiraMcp] = mcpServers;
 
   const skills = await Promise.all(
     [
@@ -570,11 +613,33 @@ async function main() {
         readingTimeMin: 8,
         tags: "Lifecycle,Process",
       },
+      {
+        slug: "emergency-shutdown-guide",
+        name: "Emergency Shutdown Guide",
+        shortDescription: "How to safely stop an agent in an emergency.",
+        description:
+          "Operational guide for initiating, verifying and documenting emergency agent shutdowns.",
+        content:
+          "## When to shut down\nUse emergency shutdown for uncontrolled tool behavior, security incidents or regulatory risk.\n\n## Steps\n1. Confirm severity with the business owner.\n2. Trigger the platform kill-switch.\n3. Notify emergency contact and governance.\n4. Record the activity and open a critical review.\n5. Retest the shutdown procedure after remediation.\n\n## Evidence\nKeep timestamps, actor identity and verification results for audit.",
+        category: "Operations",
+        audience: "Agent owners & platform ops",
+        readingTimeMin: 7,
+        tags: "Shutdown,Emergency,Operations",
+      },
     ].map((g) => prisma.guide.create({ data: g }))
   );
 
-  const [registerGuide, riskGuide, mcpGuide, raiChecklist, reuseGuide, oversightGuide, prodChecklist, lifecycleGuide] =
-    guides;
+  const [
+    registerGuide,
+    riskGuide,
+    mcpGuide,
+    raiChecklist,
+    reuseGuide,
+    oversightGuide,
+    prodChecklist,
+    lifecycleGuide,
+    emergencyShutdownGuide,
+  ] = guides;
 
   const hooks = await Promise.all(
     [
@@ -662,10 +727,33 @@ async function main() {
         enabled: true,
         tags: "Metadata,Sync",
       },
+      {
+        slug: "create-critical-review-after-emergency-stop",
+        name: "Create Critical Review After Emergency Stop",
+        shortDescription: "Opens a critical governance review after an emergency shutdown.",
+        description:
+          "Creates a high-priority review item whenever an agent emergency stop is triggered, ensuring root-cause analysis before re-enablement.",
+        triggerEvent: "agent.emergency_stop.triggered",
+        action: "Create critical review item and notify owners",
+        owner: "AI Governance Office",
+        ownerEmail: "ai.governance@example.com",
+        status: "Active",
+        scope: "All production agents",
+        enabled: true,
+        tags: "Emergency,Review,Shutdown",
+      },
     ].map((h) => prisma.hook.create({ data: h }))
   );
 
-  const [riskReassessHook, notifyReviewHook, disableCyberHook, auditPublishHook, flagCostHook, syncMetaHook] = hooks;
+  const [
+    riskReassessHook,
+    notifyReviewHook,
+    disableCyberHook,
+    auditPublishHook,
+    flagCostHook,
+    syncMetaHook,
+    emergencyStopHook,
+  ] = hooks;
 
   const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -677,19 +765,31 @@ async function main() {
       shortDescription:
         "Classifies incoming invoices, extracts relevant metadata and routes exceptions to the appropriate finance workflow.",
       description:
-        "The Invoice Triage Agent supports Accounts Payable teams by classifying incoming invoices, extracting structured metadata, matching vendors and routing exceptions to the correct finance workflow. It is designed for reuse across Enabling Functions with clear human oversight for high-value actions.",
-      agentId: "AGT-FIN-001",
-      solutionType: "Agent Product",
+        "The Invoice Triage Agent supports Accounts Payable teams by classifying incoming invoices, extracting structured metadata, matching vendors and routing exceptions to the correct finance workflow. It is designed for reuse across Enabling Functions with clear human oversight for high-value actions. Responsible AI has been assessed (ASSESSED): high-value actions require an approval gate, full prompt and action logging is retained for one year, and the agent does not execute payments.",
+      agentId: "AGT-00123",
+      solutionType: "Agent Asset",
+      agentPattern: "Standalone",
+      originType: "Internal",
+      visibility: "Enterprise Visible",
+      usagePolicy: "Usage limits may apply",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
       businessArea: BusinessArea.ENABLING_FUNCTIONS,
+      businessUnit: "Finance",
       businessCapability: "Accounts Payable",
-      useCase: "Automate invoice intake classification and exception routing",
+      useCase: "Automated invoice matching and exception routing",
       businessCriticality: "High",
-      valueBenefit: "Reduced manual triage effort and faster exception handling",
-      costNote: "Estimated €1,850 / month at current volume",
+      valueBenefit: "€200k/year estimated benefit · 30% cycle-time reduction",
+      costNote: "Estimated €50k/year at current volume",
+      actualCost: "€50k/year",
+      costModel: "Usage based",
+      costCenter: "DEMO-4711",
+      costPer1kRuns: "€1.48",
       platform: "UPTIMIZE Foundry",
       lifecycleStage: LifecycleStage.PRODUCTION,
       registrationStatus: "Registered",
-      approvalStatus: "Approved",
+      approvalStatus: "Approved by ARB 2026-05",
       businessOwner: "Anna Keller",
       businessOwnerEmail: "anna.keller@example.com",
       technicalOwner: "Marcus Weber",
@@ -697,36 +797,53 @@ async function main() {
       backupOwner: "Lena Hoffmann",
       backupOwnerEmail: "lena.hoffmann@example.com",
       supportContact: "finance-ai-support@example.com",
-      riskLevel: RiskLevel.LOW,
+      targetPersonas: "AP clerks, AP team leads",
+      riskLevel: RiskLevel.MEDIUM,
       riskAssessmentStatus: AssessmentStatus.ASSESSED,
       dataClassification: "Internal",
       personalData: false,
       gxpRelevant: false,
-      cyberReviewStatus: "Approved",
+      cyberReviewStatus: "Reviewed 2026-06",
       responsibleAiStatus: AssessmentStatus.ASSESSED,
-      humanOversight: "Required",
+      humanOversight: "Approval gate on high-value actions",
+      regulatoryScope: "GDPR / SOX",
       certified: true,
       accessLevel: AccessLevel.APPROVAL_REQUIRED,
       accessLeadTime: "2–3 business days",
       version: "2.3",
-      framework: "UPTIMIZE Agent Runtime",
-      model: "Enterprise LLM (approved endpoint)",
-      autonomyLevel: "Assisted automation",
+      framework: "LangGraph",
+      model: "GPT-4o / Azure",
+      runtime: "UPTIMIZE Agent Runtime",
+      autonomyLevel: "Human-in-the-loop",
       invocationType: "Event-driven + API",
       environments: "Dev, Test, Prod",
+      declaredResourcesSummary: "SAP invoice data, Vendor master, Finance Data Lake",
+      observedResourcesSummary: "SAP Finance MCP, Jira MCP (declared), ServiceNow Workflow MCP",
+      observabilityNotes: "Success rate, latency and cost tracked in platform telemetry",
+      autoDiscoveryMode: "Manual registration with platform sync",
+      notificationPolicy: "Owner + platform team",
+      escalationPolicy: "Auto-disable and escalate",
+      auditLoggingPolicy: "Full prompt & action log, 1 year retention",
+      emergencyShutdownStrategy:
+        "Manual kill-switch via platform owner. Procedure documented and tested quarterly.",
+      shutdownProcedureStatus: "Documented",
+      shutdownLastTestedAt: daysAgo(45),
+      emergencyContact: "finance-ai-support@example.com",
       monthlyRuns: 1248,
-      successRate: 97.4,
-      averageLatencyMs: 1850,
-      monthlyCost: "€1,850",
+      successRate: 95.2,
+      averageLatencyMs: 1200,
+      monthlyCost: "€4,167",
       rating: 4.8,
       ratingCount: 64,
       subscriberCount: 86,
-      reviewCadence: "Annual",
+      reviewCadence: "Quarterly",
       nextReviewAt: daysFromNow(43),
       tags: "Finance,Document AI,SAP,Production",
       featured: true,
       capabilityCategory: "Automation",
       usageLimitations: "Not intended for confidential HR or clinical documents",
+      firstRegisteredBy: "Emily Stone",
+      lastModifiedBy: "David Klein",
       updatedAt: daysAgo(0),
       createdAt: daysAgo(180),
       capabilities: {
@@ -740,19 +857,76 @@ async function main() {
       },
       dataAssets: {
         create: [
-          { name: "SAP invoice metadata", description: "Invoice header and status fields", direction: "INPUT" },
-          { name: "Uploaded invoice document", description: "PDF or image invoice payload", direction: "INPUT" },
-          { name: "Vendor master data", description: "Approved vendor master records", direction: "INPUT" },
-          { name: "Invoice classification", description: "Document class and confidence", direction: "OUTPUT" },
-          { name: "Extracted fields", description: "Structured invoice fields", direction: "OUTPUT" },
-          { name: "Routing recommendation", description: "Suggested AP workflow route", direction: "OUTPUT" },
+          {
+            name: "SAP invoice metadata",
+            description: "Invoice header and status fields",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "ERP",
+          },
+          {
+            name: "Uploaded invoice document",
+            description: "PDF or image invoice payload",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "Document upload",
+          },
+          {
+            name: "Vendor master data",
+            description: "Approved vendor master records",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "Master data",
+          },
+          {
+            name: "Invoice classification",
+            description: "Document class and confidence",
+            direction: "OUTPUT",
+            classification: "Internal",
+            sensitivity: "Low",
+            sourceType: "Agent output",
+          },
+          {
+            name: "Extracted fields",
+            description: "Structured invoice fields",
+            direction: "OUTPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "Agent output",
+          },
+          {
+            name: "Routing recommendation",
+            description: "Suggested AP workflow route",
+            direction: "OUTPUT",
+            classification: "Internal",
+            sensitivity: "Low",
+            sourceType: "Agent output",
+          },
         ],
       },
       knowledgeSources: {
         create: [
-          { name: "Finance policy knowledge base", description: "AP policies and exception rules" },
-          { name: "Vendor master", description: "SAP vendor reference data" },
-          { name: "Accounts payable procedures", description: "Operational AP playbooks" },
+          {
+            name: "Finance policy knowledge base",
+            description: "AP policies and exception rules",
+            classification: "Internal",
+            sourceType: "Knowledge base",
+          },
+          {
+            name: "Vendor master",
+            description: "SAP vendor reference data",
+            classification: "Internal",
+            sourceType: "ERP",
+          },
+          {
+            name: "Accounts payable procedures",
+            description: "Operational AP playbooks",
+            classification: "Internal",
+            sourceType: "SharePoint",
+          },
         ],
       },
       faqItems: {
@@ -774,6 +948,11 @@ async function main() {
           {
             question: "What happens if the confidence score is low?",
             answer: "Low-confidence cases are escalated to a human reviewer via the Human Escalation skill.",
+          },
+          {
+            question: "How do I trigger an emergency shutdown?",
+            answer:
+              "Contact the emergency contact (finance-ai-support@example.com) or use the platform kill-switch. The documented emergency shutdown strategy auto-disables the agent and escalates to the owner and platform team. Procedure status is Documented and last tested within the review cadence.",
           },
         ],
       },
@@ -1078,7 +1257,7 @@ async function main() {
       businessOwnerEmail: "martin.vogt@example.com",
       technicalOwner: "Ines Braun",
       technicalOwnerEmail: "ines.braun@example.com",
-      riskLevel: RiskLevel.HIGH,
+      riskLevel: RiskLevel.MISSION_CRITICAL,
       riskAssessmentStatus: AssessmentStatus.ASSESSED,
       dataClassification: "Confidential",
       personalData: false,
@@ -1540,12 +1719,1061 @@ async function main() {
   const knowledgeAgent = moreAgents.find((a) => a.slug === "enterprise-knowledge-assistant")!;
   const qualityAgent = moreAgents.find((a) => a.slug === "quality-deviation-assistant")!;
   const itsmAgent = moreAgents.find((a) => a.slug === "it-service-desk-copilot")!;
+  const regulatoryAgent = moreAgents.find((a) => a.slug === "regulatory-document-reviewer")!;
+
+  // Enrich key existing agents with pattern / policy metadata
+  await prisma.agent.update({
+    data: {
+      agentPattern: "Sub-Agent",
+      solutionType: "Agent Asset",
+      usagePolicy: "Unlimited use",
+      originType: "Internal",
+      visibility: "Enterprise Visible",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
+      businessUnit: "Finance Shared Services",
+      targetPersonas: "AP clerks, invoice automation developers",
+      runtime: "UPTIMIZE Agent Runtime",
+      firstRegisteredBy: "Marcus Weber",
+      lastModifiedBy: "Marcus Weber",
+    },
+    where: { id: vendorAgent.id },
+  });
+
+  await prisma.agent.update({
+    data: {
+      agentPattern: "Standalone",
+      solutionType: "Agent Asset",
+      originType: "Internal",
+      usagePolicy: "Unlimited use",
+      businessUnit: "Clinical Operations",
+      targetPersonas: "Clinical operations specialists, study managers",
+      runtime: "HIVE Agent Layer",
+      regulatoryScope: "GxP / clinical documentation",
+      firstRegisteredBy: "Jonas Brandt",
+      lastModifiedBy: "Jonas Brandt",
+    },
+    where: { id: clinical.id },
+  });
+
+  await prisma.agent.update({
+    data: {
+      agentPattern: "Standalone",
+      solutionType: "Agent Asset",
+      originType: "Internal",
+      usagePolicy: "Usage limits may apply",
+      businessUnit: "Procurement Excellence",
+      targetPersonas: "Category managers, supplier risk analysts",
+      runtime: "Microsoft Copilot Studio",
+      firstRegisteredBy: "Elena Novak",
+      lastModifiedBy: "Elena Novak",
+    },
+    where: { id: supplier.id },
+  });
+
+  await prisma.agent.update({
+    data: {
+      agentPattern: "Standalone",
+      solutionType: "Agent Asset",
+      originType: "Internal",
+      usagePolicy: "Unlimited use",
+      businessUnit: "Knowledge Platform",
+      targetPersonas: "All employees",
+      runtime: "myGPT / Langdock",
+      firstRegisteredBy: "Kai Mendel",
+      lastModifiedBy: "Kai Mendel",
+    },
+    where: { id: knowledgeAgent.id },
+  });
+
+  // New agents for product composition and dependency graph
+  const financeOrchestrator = await prisma.agent.create({
+    data: {
+      slug: "finance-operations-orchestrator",
+      name: "Finance Operations Orchestrator",
+      shortDescription:
+        "Coordinates invoice triage, vendor matching and exception routing across finance shared services.",
+      description:
+        "Orchestrator agent that composes finance agent assets into an end-to-end invoice operations flow. It routes work between primary and sub-agents while preserving human approval gates for high-value exceptions.",
+      agentId: "AGT-FIN-010",
+      solutionType: "Agent Asset",
+      agentPattern: "Orchestrator",
+      originType: "Internal",
+      visibility: "Enterprise Visible",
+      usagePolicy: "Usage limits may apply",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
+      businessArea: BusinessArea.ENABLING_FUNCTIONS,
+      businessUnit: "Finance Shared Services",
+      businessCapability: "Accounts Payable",
+      useCase: "Orchestrate automated invoice intake and exception handling",
+      businessCriticality: "High",
+      valueBenefit: "End-to-end AP automation with governed hand-offs",
+      costNote: "Estimated €2,400 / month",
+      actualCost: "€2,400 / month",
+      costModel: "Usage based",
+      costCenter: "CC-FIN-240",
+      platform: "UPTIMIZE Foundry",
+      lifecycleStage: LifecycleStage.PRODUCTION,
+      businessOwner: "Anna Keller",
+      businessOwnerEmail: "anna.keller@example.com",
+      technicalOwner: "Marcus Weber",
+      technicalOwnerEmail: "marcus.weber@example.com",
+      backupOwner: "Lena Hoffmann",
+      backupOwnerEmail: "lena.hoffmann@example.com",
+      supportContact: "finance-ai-support@example.com",
+      targetPersonas: "AP leads, finance operations managers",
+      riskLevel: RiskLevel.LOW,
+      riskAssessmentStatus: AssessmentStatus.ASSESSED,
+      dataClassification: "Internal",
+      personalData: false,
+      gxpRelevant: false,
+      cyberReviewStatus: "Approved",
+      responsibleAiStatus: AssessmentStatus.ASSESSED,
+      humanOversight: "Required",
+      regulatoryScope: "SOX (finance controls)",
+      certified: true,
+      accessLevel: AccessLevel.APPROVAL_REQUIRED,
+      accessLeadTime: "3 business days",
+      version: "1.0",
+      framework: "UPTIMIZE Agent Runtime",
+      model: "Enterprise LLM (approved endpoint)",
+      runtime: "UPTIMIZE Agent Runtime",
+      autonomyLevel: "Orchestrated automation",
+      invocationType: "Event-driven + API",
+      environments: "Test, Prod",
+      emergencyShutdownStrategy:
+        "Orchestrator kill-switch disables downstream finance agent invocations.",
+      shutdownProcedureStatus: "Documented",
+      shutdownLastTestedAt: daysAgo(30),
+      emergencyContact: "finance-ai-support@example.com",
+      monthlyRuns: 860,
+      successRate: 96.2,
+      averageLatencyMs: 3200,
+      monthlyCost: "€2,400",
+      rating: 4.6,
+      ratingCount: 18,
+      subscriberCount: 24,
+      reviewCadence: "Annual",
+      nextReviewAt: daysFromNow(50),
+      tags: "Finance,Orchestrator,UPTIMIZE,Production",
+      featured: false,
+      capabilityCategory: "Automation",
+      firstRegisteredBy: "Marcus Weber",
+      lastModifiedBy: "Marcus Weber",
+      createdAt: daysAgo(75),
+      updatedAt: daysAgo(2),
+      capabilities: {
+        create: [
+          { name: "Workflow orchestration", description: "Coordinates finance agent assets." },
+          { name: "Exception hand-off", description: "Routes exceptions to the correct sub-agent." },
+          { name: "Approval gate", description: "Enforces human approval for high-value actions." },
+        ],
+      },
+      dataAssets: {
+        create: [
+          {
+            name: "Invoice case packet",
+            description: "Case context for orchestration",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "Workflow",
+          },
+          {
+            name: "Routing plan",
+            description: "Ordered agent execution plan",
+            direction: "OUTPUT",
+            classification: "Internal",
+            sensitivity: "Low",
+            sourceType: "Agent output",
+          },
+        ],
+      },
+      knowledgeSources: {
+        create: [
+          {
+            name: "AP orchestration playbook",
+            description: "Finance orchestration runbook",
+            classification: "Internal",
+            sourceType: "Knowledge base",
+          },
+        ],
+      },
+      faqItems: {
+        create: [
+          {
+            question: "What is this agent intended for?",
+            answer: "Orchestrating finance agent assets for invoice intake and exception routing.",
+          },
+          {
+            question: "Can this agent process personal data?",
+            answer: "No personal data processing is in the current assessed scope.",
+          },
+          {
+            question: "How do I request access?",
+            answer: "Use Request access on this page. Approval is required.",
+          },
+          {
+            question: "What happens if the confidence score is low?",
+            answer: "The orchestrator escalates to an AP lead and pauses automated routing.",
+          },
+        ],
+      },
+    },
+  });
+
+  const qualityEventSubAgent = await prisma.agent.create({
+    data: {
+      slug: "quality-event-sub-agent",
+      name: "Quality Event Sub-Agent",
+      shortDescription: "Sub-agent that retrieves quality event context for deviation investigations.",
+      description:
+        "Specialized sub-agent used by quality workflows to fetch related quality events, CAPA references and investigation context under human oversight.",
+      agentId: "AGT-QA-012",
+      solutionType: "Agent Asset",
+      agentPattern: "Sub-Agent",
+      originType: "Internal",
+      visibility: "Enterprise Visible",
+      usagePolicy: "Unlimited use",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
+      businessArea: BusinessArea.HEALTHCARE,
+      businessUnit: "Quality Operations",
+      businessCapability: "Quality",
+      useCase: "Support quality deviation investigation with event context",
+      businessCriticality: "High",
+      valueBenefit: "Faster assembly of quality event context",
+      platform: "HIVE",
+      lifecycleStage: LifecycleStage.PILOT,
+      businessOwner: "Martin Vogt",
+      businessOwnerEmail: "martin.vogt@example.com",
+      technicalOwner: "Ines Braun",
+      technicalOwnerEmail: "ines.braun@example.com",
+      backupOwner: "Backup Owner",
+      backupOwnerEmail: "backup.owner@example.com",
+      supportContact: "quality-ai@example.com",
+      targetPersonas: "Quality investigators, CAPA owners",
+      riskLevel: RiskLevel.HIGH,
+      riskAssessmentStatus: AssessmentStatus.ASSESSED,
+      dataClassification: "Confidential",
+      personalData: false,
+      gxpRelevant: true,
+      cyberReviewStatus: "Approved",
+      responsibleAiStatus: AssessmentStatus.ASSESSED,
+      humanOversight: "Required",
+      regulatoryScope: "GxP / quality systems",
+      certified: false,
+      accessLevel: AccessLevel.RESTRICTED,
+      accessLeadTime: "5 business days",
+      version: "0.4",
+      framework: "HIVE Agent Layer",
+      model: "Enterprise LLM (approved endpoint)",
+      runtime: "HIVE Agent Layer",
+      autonomyLevel: "Advisory",
+      invocationType: "API (composed)",
+      environments: "Test, Prod",
+      monthlyRuns: 96,
+      successRate: 91.0,
+      averageLatencyMs: 2100,
+      monthlyCost: "€380",
+      rating: 4.1,
+      ratingCount: 6,
+      subscriberCount: 9,
+      reviewCadence: "Quarterly",
+      nextReviewAt: daysFromNow(18),
+      tags: "Quality,Sub-Agent,GxP,HIVE",
+      featured: false,
+      capabilityCategory: "Data & Analytics",
+      firstRegisteredBy: "Ines Braun",
+      lastModifiedBy: "Ines Braun",
+      createdAt: daysAgo(40),
+      updatedAt: daysAgo(3),
+      capabilities: {
+        create: [
+          { name: "Quality event lookup", description: "Retrieves related quality events." },
+          { name: "CAPA context", description: "Surfaces related CAPA references." },
+        ],
+      },
+      dataAssets: {
+        create: [
+          {
+            name: "Deviation identifier",
+            description: "Quality deviation ID",
+            direction: "INPUT",
+            classification: "Confidential",
+            sensitivity: "High",
+            sourceType: "QMS",
+          },
+          {
+            name: "Event shortlist",
+            description: "Related quality events",
+            direction: "OUTPUT",
+            classification: "Confidential",
+            sensitivity: "High",
+            sourceType: "Agent output",
+          },
+        ],
+      },
+      knowledgeSources: {
+        create: [
+          {
+            name: "Quality event registry",
+            description: "Controlled quality event corpus",
+            classification: "Confidential",
+            sourceType: "QMS",
+          },
+        ],
+      },
+      faqItems: {
+        create: [
+          {
+            question: "What is this agent intended for?",
+            answer: "Retrieving quality event context as a composed sub-agent.",
+          },
+          {
+            question: "Can this agent process personal data?",
+            answer: "No personal data processing is in the current assessed scope.",
+          },
+          {
+            question: "How do I request access?",
+            answer: "Access is restricted. Submit a request for eligibility review.",
+          },
+          {
+            question: "What happens if the confidence score is low?",
+            answer: "The sub-agent returns a low-confidence notice for human investigation.",
+          },
+        ],
+      },
+    },
+  });
+
+  const externalScientificSearch = await prisma.agent.create({
+    data: {
+      slug: "external-scientific-search-assistant",
+      name: "External Scientific Search Assistant",
+      shortDescription: "Third-party embedded assistant for scientific literature discovery.",
+      description:
+        "External / third-party scientific search assistant embedded into research workflows. Provides literature discovery with governed usage boundaries and no confidential data egress.",
+      agentId: "AGT-LS-030",
+      solutionType: "Agent Asset",
+      agentPattern: "Embedded",
+      originType: "External / Third Party",
+      visibility: "Enterprise Visible",
+      usagePolicy: "Usage limits may apply",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
+      businessArea: BusinessArea.LIFE_SCIENCE,
+      businessUnit: "R&D Knowledge Services",
+      businessCapability: "Research",
+      useCase: "Accelerate scientific literature discovery via embedded third-party search",
+      businessCriticality: "Medium",
+      valueBenefit: "Broader literature coverage without building a new search stack",
+      costNote: "Estimated €1,250 / month",
+      actualCost: "€1,250 / month",
+      costModel: "Subscription + usage",
+      platform: "myGPT",
+      lifecycleStage: LifecycleStage.PRODUCTION,
+      businessOwner: "Dr. Mira Chen",
+      businessOwnerEmail: "mira.chen@example.com",
+      technicalOwner: "Alex Foss",
+      technicalOwnerEmail: "alex.foss@example.com",
+      backupOwner: "Backup Owner",
+      backupOwnerEmail: "backup.owner@example.com",
+      supportContact: "rnd.knowledge@example.com",
+      targetPersonas: "Scientists, medical writers",
+      riskLevel: RiskLevel.LOW,
+      riskAssessmentStatus: AssessmentStatus.ASSESSED,
+      dataClassification: "Public",
+      personalData: false,
+      gxpRelevant: false,
+      cyberReviewStatus: "Approved",
+      responsibleAiStatus: AssessmentStatus.ASSESSED,
+      humanOversight: "Not required",
+      certified: true,
+      accessLevel: AccessLevel.OPEN,
+      accessLeadTime: "Immediate",
+      version: "2.0",
+      framework: "myGPT / Langdock",
+      model: "Third-party research models (approved)",
+      runtime: "myGPT Embedded Runtime",
+      autonomyLevel: "Advisory",
+      invocationType: "Embedded chat",
+      environments: "Prod",
+      declaredResourcesSummary: "PubMed and approved public literature sources",
+      observedResourcesSummary: "PubMed Research MCP",
+      monthlyRuns: 1450,
+      successRate: 95.2,
+      averageLatencyMs: 1800,
+      monthlyCost: "€1,250",
+      rating: 4.5,
+      ratingCount: 41,
+      subscriberCount: 120,
+      reviewCadence: "Annual",
+      nextReviewAt: daysFromNow(95),
+      tags: "Research,External,Embedded,Literature",
+      featured: false,
+      capabilityCategory: "Research",
+      firstRegisteredBy: "Alex Foss",
+      lastModifiedBy: "Alex Foss",
+      createdAt: daysAgo(110),
+      updatedAt: daysAgo(6),
+      capabilities: {
+        create: [
+          { name: "Literature search", description: "Searches approved public literature sources." },
+          { name: "Abstract retrieval", description: "Retrieves publication abstracts." },
+        ],
+      },
+      dataAssets: {
+        create: [
+          {
+            name: "Research query",
+            description: "Scientific search question",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Low",
+            sourceType: "User input",
+          },
+          {
+            name: "Literature hits",
+            description: "Ranked public publications",
+            direction: "OUTPUT",
+            classification: "Public",
+            sensitivity: "Low",
+            sourceType: "External API",
+          },
+        ],
+      },
+      knowledgeSources: {
+        create: [
+          {
+            name: "PubMed",
+            description: "Public biomedical literature index",
+            classification: "Public",
+            sourceType: "External API",
+          },
+        ],
+      },
+      faqItems: {
+        create: [
+          {
+            question: "What is this agent intended for?",
+            answer: "Embedded third-party scientific literature discovery for research teams.",
+          },
+          {
+            question: "Can this agent process personal data?",
+            answer: "No. Only public literature queries are in scope.",
+          },
+          {
+            question: "How do I request access?",
+            answer: "Access is open for approved research personas.",
+          },
+          {
+            question: "What happens if the confidence score is low?",
+            answer: "The assistant returns sparse results and recommends refining the query.",
+          },
+        ],
+      },
+    },
+  });
+
+  const exceptionRoutingAgent = await prisma.agent.create({
+    data: {
+      slug: "exception-routing-agent",
+      name: "Exception Routing Agent",
+      shortDescription: "Finance sub-agent that routes AP exceptions to the correct workflow queue.",
+      description:
+        "Sub-agent specialized in classifying and routing Accounts Payable exceptions. Composed into finance products and orchestrated flows.",
+      agentId: "AGT-FIN-003",
+      solutionType: "Agent Asset",
+      agentPattern: "Sub-Agent",
+      originType: "Internal",
+      visibility: "Enterprise Visible",
+      usagePolicy: "Unlimited use",
+      repositoryEligibility: "Eligible",
+      useCaseBindingStatus: "Linked",
+      reusableStatus: "Yes",
+      businessArea: BusinessArea.ENABLING_FUNCTIONS,
+      businessUnit: "Finance Shared Services",
+      businessCapability: "Accounts Payable",
+      useCase: "Route AP exceptions to the correct finance workflow",
+      businessCriticality: "High",
+      valueBenefit: "Consistent exception routing with lower manual hand-offs",
+      costNote: "Estimated €620 / month",
+      actualCost: "€620 / month",
+      costModel: "Usage based",
+      costCenter: "CC-FIN-240",
+      platform: "UPTIMIZE Agents",
+      lifecycleStage: LifecycleStage.PRODUCTION,
+      businessOwner: "Anna Keller",
+      businessOwnerEmail: "anna.keller@example.com",
+      technicalOwner: "Marcus Weber",
+      technicalOwnerEmail: "marcus.weber@example.com",
+      backupOwner: "Lena Hoffmann",
+      backupOwnerEmail: "lena.hoffmann@example.com",
+      supportContact: "finance-ai-support@example.com",
+      targetPersonas: "AP clerks, AP team leads",
+      riskLevel: RiskLevel.LOW,
+      riskAssessmentStatus: AssessmentStatus.ASSESSED,
+      dataClassification: "Internal",
+      personalData: false,
+      gxpRelevant: false,
+      cyberReviewStatus: "Approved",
+      responsibleAiStatus: AssessmentStatus.ASSESSED,
+      humanOversight: "Required",
+      regulatoryScope: "SOX (finance controls)",
+      certified: true,
+      accessLevel: AccessLevel.OPEN,
+      accessLeadTime: "1–2 business days",
+      version: "1.2",
+      framework: "UPTIMIZE Agent Runtime",
+      model: "Enterprise LLM (approved endpoint)",
+      runtime: "UPTIMIZE Agent Runtime",
+      autonomyLevel: "Assisted automation",
+      invocationType: "API (composed)",
+      environments: "Test, Prod",
+      escalationPolicy: "Escalate ambiguous exceptions to AP lead",
+      monthlyRuns: 740,
+      successRate: 97.0,
+      averageLatencyMs: 1100,
+      monthlyCost: "€620",
+      rating: 4.7,
+      ratingCount: 15,
+      subscriberCount: 28,
+      reviewCadence: "Annual",
+      nextReviewAt: daysFromNow(65),
+      tags: "Finance,Exceptions,Sub-Agent,UPTIMIZE",
+      featured: false,
+      capabilityCategory: "Automation",
+      firstRegisteredBy: "Marcus Weber",
+      lastModifiedBy: "Marcus Weber",
+      createdAt: daysAgo(100),
+      updatedAt: daysAgo(5),
+      capabilities: {
+        create: [
+          { name: "Exception classification", description: "Classifies AP exception types." },
+          { name: "Queue routing", description: "Routes exceptions to the correct AP queue." },
+        ],
+      },
+      dataAssets: {
+        create: [
+          {
+            name: "Exception case",
+            description: "AP exception payload",
+            direction: "INPUT",
+            classification: "Internal",
+            sensitivity: "Business confidential",
+            sourceType: "Workflow",
+          },
+          {
+            name: "Target queue",
+            description: "Recommended AP queue",
+            direction: "OUTPUT",
+            classification: "Internal",
+            sensitivity: "Low",
+            sourceType: "Agent output",
+          },
+        ],
+      },
+      knowledgeSources: {
+        create: [
+          {
+            name: "AP exception taxonomy",
+            description: "Approved exception categories and routes",
+            classification: "Internal",
+            sourceType: "Knowledge base",
+          },
+        ],
+      },
+      faqItems: {
+        create: [
+          {
+            question: "What is this agent intended for?",
+            answer: "Routing Accounts Payable exceptions as a composed finance sub-agent.",
+          },
+          {
+            question: "Can this agent process personal data?",
+            answer: "No personal data processing is in the current assessed scope.",
+          },
+          {
+            question: "How do I request access?",
+            answer: "Access is open for finance automation consumers.",
+          },
+          {
+            question: "What happens if the confidence score is low?",
+            answer: "Ambiguous exceptions are escalated to an AP lead.",
+          },
+        ],
+      },
+    },
+  });
+
+  moreAgents.push(
+    financeOrchestrator,
+    qualityEventSubAgent,
+    externalScientificSearch,
+    exceptionRoutingAgent
+  );
+
+  // Use cases (created after agents so we can link via useCaseId)
+  const useCases = await Promise.all([
+    prisma.useCase.create({
+      data: {
+        slug: "uc-fin-023-automated-invoice-intake",
+        useCaseId: "UC-FIN-023",
+        name: "Automated Invoice Intake & Routing",
+        description:
+          "Automate invoice intake classification, vendor matching and exception routing for Accounts Payable shared services.",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        businessCapability: "Accounts Payable",
+        owner: "Anna Keller",
+        ownerEmail: "anna.keller@example.com",
+        platform: "UPTIMIZE Foundry",
+        lifecycle: LifecycleStage.PRODUCTION,
+        riskLevel: RiskLevel.LOW,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: false,
+        tags: "Finance,AP,Automation",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-hc-014-clinical-trial-navigation",
+        useCaseId: "UC-HC-014",
+        name: "Clinical Trial Navigation",
+        description:
+          "Help clinical operations teams navigate protocols, study documentation and operational questions with governed sources.",
+        businessArea: BusinessArea.HEALTHCARE,
+        businessCapability: "Clinical Operations",
+        owner: "Sofia Ramirez",
+        ownerEmail: "sofia.ramirez@example.com",
+        platform: "HIVE",
+        lifecycle: LifecycleStage.PILOT,
+        riskLevel: RiskLevel.MEDIUM,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: true,
+        tags: "Clinical,Protocols,HIVE",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-proc-007-supplier-risk-triage",
+        useCaseId: "UC-PROC-007",
+        name: "Supplier Risk Triage",
+        description:
+          "Support procurement specialists with supplier risk signal aggregation and follow-up recommendations.",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        businessCapability: "Procurement",
+        owner: "Thomas Berger",
+        ownerEmail: "thomas.berger@example.com",
+        platform: "Microsoft Copilot Studio",
+        lifecycle: LifecycleStage.PILOT,
+        riskLevel: RiskLevel.MEDIUM,
+        riskAssessmentStatus: AssessmentStatus.PENDING,
+        gxpRelevant: false,
+        tags: "Procurement,Risk,Supplier",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-know-002-enterprise-knowledge-discovery",
+        useCaseId: "UC-KNOW-002",
+        name: "Enterprise Knowledge Discovery",
+        description:
+          "Provide unified knowledge discovery across approved enterprise sources to reduce duplicate assistants.",
+        businessArea: BusinessArea.GLOBAL_CROSS_SECTOR,
+        businessCapability: "Knowledge Management",
+        owner: "Sabine Holt",
+        ownerEmail: "sabine.holt@example.com",
+        platform: "myGPT",
+        lifecycle: LifecycleStage.PRODUCTION,
+        riskLevel: RiskLevel.LOW,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: false,
+        tags: "Knowledge,Search,Reuse",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-hr-004-hr-policy-self-service",
+        useCaseId: "UC-HR-004",
+        name: "HR Policy Self-Service",
+        description:
+          "Enable employees to self-serve HR policy answers grounded in approved policy documents.",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        businessCapability: "HR",
+        owner: "Julia Reinhardt",
+        ownerEmail: "julia.reinhardt@example.com",
+        platform: "myGPT",
+        lifecycle: LifecycleStage.PRODUCTION,
+        riskLevel: RiskLevel.LOW,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: false,
+        tags: "HR,Policy,Self-Service",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-qa-011-quality-deviation-investigation",
+        useCaseId: "UC-QA-011",
+        name: "Quality Deviation Investigation",
+        description:
+          "Support quality teams investigating deviations with governed references, CAPA context and human oversight.",
+        businessArea: BusinessArea.HEALTHCARE,
+        businessCapability: "Quality",
+        owner: "Martin Vogt",
+        ownerEmail: "martin.vogt@example.com",
+        platform: "HIVE",
+        lifecycle: LifecycleStage.PILOT,
+        riskLevel: RiskLevel.MISSION_CRITICAL,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: true,
+        tags: "Quality,Deviation,GxP",
+      },
+    }),
+    prisma.useCase.create({
+      data: {
+        slug: "uc-reg-008-regulatory-document-package-review",
+        useCaseId: "UC-REG-008",
+        name: "Regulatory Document Package Review",
+        description:
+          "Assist regulatory affairs with document package completeness checks and issue highlighting under strict oversight.",
+        businessArea: BusinessArea.HEALTHCARE,
+        businessCapability: "Regulatory",
+        owner: "Claudia Stein",
+        ownerEmail: "claudia.stein@example.com",
+        platform: "UPTIMIZE Agents",
+        lifecycle: LifecycleStage.PRODUCTION,
+        riskLevel: RiskLevel.HIGH,
+        riskAssessmentStatus: AssessmentStatus.ASSESSED,
+        gxpRelevant: true,
+        tags: "Regulatory,Documents,Review",
+      },
+    }),
+  ]);
+
+  const [
+    ucInvoice,
+    ucClinical,
+    ucSupplier,
+    ucKnowledge,
+    ucHr,
+    ucQuality,
+    ucRegulatory,
+  ] = useCases;
+
+  await prisma.agent.update({ where: { id: invoice.id }, data: { useCaseId: ucInvoice.id } });
+  await prisma.agent.update({ where: { id: vendorAgent.id }, data: { useCaseId: ucInvoice.id } });
+  await prisma.agent.update({
+    where: { id: exceptionRoutingAgent.id },
+    data: { useCaseId: ucInvoice.id },
+  });
+  await prisma.agent.update({
+    where: { id: financeOrchestrator.id },
+    data: { useCaseId: ucInvoice.id },
+  });
+  await prisma.agent.update({ where: { id: clinical.id }, data: { useCaseId: ucClinical.id } });
+  await prisma.agent.update({ where: { id: supplier.id }, data: { useCaseId: ucSupplier.id } });
+  await prisma.agent.update({
+    where: { id: knowledgeAgent.id },
+    data: { useCaseId: ucKnowledge.id },
+  });
+  await prisma.agent.update({ where: { id: hrAgent.id }, data: { useCaseId: ucHr.id } });
+  await prisma.agent.update({ where: { id: qualityAgent.id }, data: { useCaseId: ucQuality.id } });
+  await prisma.agent.update({
+    where: { id: qualityEventSubAgent.id },
+    data: { useCaseId: ucQuality.id },
+  });
+  await prisma.agent.update({
+    where: { id: regulatoryAgent.id },
+    data: { useCaseId: ucRegulatory.id },
+  });
+  await prisma.agent.update({
+    where: { id: externalScientificSearch.id },
+    data: { useCaseId: ucKnowledge.id },
+  });
+  await prisma.agent.update({
+    where: { id: researchAgent.id },
+    data: { useCaseId: ucKnowledge.id },
+  });
+
+  // Agent products
+  const financeProduct = await prisma.agentProduct.create({
+    data: {
+      slug: "finance-operations-assistant",
+      name: "Finance Operations Assistant",
+      shortDescription:
+        "Composable finance product for invoice triage, vendor matching and exception routing.",
+      description:
+        "Agent product that packages Invoice Triage as the primary asset with Vendor Matching and Exception Routing as supporting / sub-agents, optionally coordinated by the Finance Operations Orchestrator.",
+      businessArea: BusinessArea.ENABLING_FUNCTIONS,
+      businessCapability: "Accounts Payable",
+      businessOwner: "Anna Keller",
+      businessOwnerEmail: "anna.keller@example.com",
+      lifecycleStage: LifecycleStage.PRODUCTION,
+      riskLevel: RiskLevel.LOW,
+      accessLevel: AccessLevel.APPROVAL_REQUIRED,
+      certified: true,
+      rating: 4.7,
+      ratingCount: 32,
+      valueBenefit: "Reusable AP automation package with governed composition",
+      usagePolicy: "Usage limits may apply",
+      platform: "UPTIMIZE Foundry",
+      tags: "Finance,AP,Product,UPTIMIZE",
+      featured: true,
+      useCaseId: ucInvoice.id,
+      agents: {
+        create: [
+          { agentId: invoice.id, role: "Primary Agent", sortOrder: 1 },
+          { agentId: vendorAgent.id, role: "Supporting Agent", sortOrder: 2 },
+          { agentId: exceptionRoutingAgent.id, role: "Sub-Agent", sortOrder: 3 },
+          { agentId: financeOrchestrator.id, role: "Orchestrator", sortOrder: 4 },
+        ],
+      },
+    },
+  });
+
+  const clinicalProduct = await prisma.agentProduct.create({
+    data: {
+      slug: "clinical-study-support-suite",
+      name: "Clinical Study Support Suite",
+      shortDescription: "Suite for clinical protocol navigation and study documentation support.",
+      description:
+        "Agent product combining Clinical Trial Navigator with quality event support for study operations teams.",
+      businessArea: BusinessArea.HEALTHCARE,
+      businessCapability: "Clinical Operations",
+      businessOwner: "Sofia Ramirez",
+      businessOwnerEmail: "sofia.ramirez@example.com",
+      lifecycleStage: LifecycleStage.PILOT,
+      riskLevel: RiskLevel.MEDIUM,
+      accessLevel: AccessLevel.RESTRICTED,
+      certified: true,
+      rating: 4.8,
+      ratingCount: 14,
+      valueBenefit: "Faster study support with governed clinical knowledge",
+      usagePolicy: "Unlimited use",
+      platform: "HIVE",
+      tags: "Clinical,Study,Product,HIVE",
+      featured: true,
+      useCaseId: ucClinical.id,
+      agents: {
+        create: [
+          { agentId: clinical.id, role: "Primary Agent", sortOrder: 1 },
+          { agentId: qualityEventSubAgent.id, role: "Supporting Agent", sortOrder: 2 },
+        ],
+      },
+    },
+  });
+
+  const knowledgeProduct = await prisma.agentProduct.create({
+    data: {
+      slug: "enterprise-knowledge-copilot",
+      name: "Enterprise Knowledge Copilot",
+      shortDescription: "Enterprise knowledge product spanning internal and external discovery agents.",
+      description:
+        "Agent product packaging the Enterprise Knowledge Assistant with the External Scientific Search Assistant for cross-sector discovery.",
+      businessArea: BusinessArea.GLOBAL_CROSS_SECTOR,
+      businessCapability: "Knowledge Management",
+      businessOwner: "Sabine Holt",
+      businessOwnerEmail: "sabine.holt@example.com",
+      lifecycleStage: LifecycleStage.PRODUCTION,
+      riskLevel: RiskLevel.LOW,
+      accessLevel: AccessLevel.OPEN,
+      certified: true,
+      rating: 4.6,
+      ratingCount: 88,
+      valueBenefit: "One governed knowledge entry point across approved sources",
+      usagePolicy: "Unlimited use",
+      platform: "myGPT",
+      tags: "Knowledge,Search,Product,myGPT",
+      featured: true,
+      useCaseId: ucKnowledge.id,
+      agents: {
+        create: [
+          { agentId: knowledgeAgent.id, role: "Primary Agent", sortOrder: 1 },
+          { agentId: externalScientificSearch.id, role: "Supporting Agent", sortOrder: 2 },
+          { agentId: hrAgent.id, role: "Supporting Agent", sortOrder: 3 },
+        ],
+      },
+    },
+  });
+
+  const agentProducts = [financeProduct, clinicalProduct, knowledgeProduct];
+
+  // Platform sources (workshop snapshot)
+  const platformSources = await Promise.all([
+    prisma.platformSource.create({
+      data: {
+        slug: "uptimize-foundry-aip",
+        name: "UPTIMIZE Foundry / AIP",
+        category: "Agent platform",
+        repositoryStatus: RepositoryStatus.IN_SCOPE,
+        ingestionMode: IngestionMode.AUTOMATED,
+        role: "Governance and inventory source of truth for Foundry agents",
+        summary: "Primary in-scope platform for governed agent registration and risk metadata.",
+        metadataAvailable: "Owner, lifecycle, risk, tools, runtime telemetry",
+        knownGap: null,
+        caveat: null,
+        notes: "Mature risk and ownership metadata feed for the prototype repository.",
+        sortOrder: 1,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "mygpt-suite",
+        name: "myGPT Suite",
+        category: "Agent platform",
+        repositoryStatus: RepositoryStatus.IN_SCOPE,
+        ingestionMode: IngestionMode.AUTOMATED,
+        role: "Inventory feed for conversational assistants and copilots",
+        summary: "In-scope conversational platform with strong volume but mapping gaps.",
+        metadataAvailable: "Assistant name, usage signals, basic ownership hints",
+        knownGap: "Owner identity mapping, department mapping",
+        caveat: "Governance scan ≠ formal assessment",
+        notes: "Useful discovery feed; still needs identity and org mapping enrichment.",
+        sortOrder: 2,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "uptimize-agents-integration-hub",
+        name: "UPTIMIZE Agents / Integration Hub",
+        category: "Technical metadata feed",
+        repositoryStatus: RepositoryStatus.IN_SCOPE,
+        ingestionMode: IngestionMode.AUTOMATED,
+        role: "Technical metadata and connector inventory",
+        summary: "Technical feed for agent integrations and MCP-style tool bindings.",
+        metadataAvailable: "Endpoints, connectors, tool bindings, environments",
+        knownGap: "Not a business UI — limited business ownership narrative",
+        caveat: "Technical metadata feed, NOT business UI",
+        notes: "Treat as technical inventory, not the primary business catalog experience.",
+        sortOrder: 3,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "leanix-gear",
+        name: "LeanIX / GEAR",
+        category: "Architecture inventory",
+        repositoryStatus: RepositoryStatus.CONTEXT_FEED,
+        ingestionMode: IngestionMode.MANUAL,
+        role: "Enterprise architecture context for applications and capabilities",
+        summary: "Context feed for application landscape; limited AI-specific metadata today.",
+        metadataAvailable: "Application ownership, capability mapping, lifecycle",
+        knownGap: "Limited AI metadata",
+        caveat: null,
+        notes: "Useful for context and ownership cross-checks, not primary agent inventory.",
+        sortOrder: 4,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "hive",
+        name: "HIVE",
+        category: "Agent platform",
+        repositoryStatus: RepositoryStatus.TARGET_STATE,
+        ingestionMode: IngestionMode.PLANNED,
+        role: "Target-state clinical / research agent inventory",
+        summary: "Target platform for clinical and research agents; auto extraction not confirmed.",
+        metadataAvailable: "Planned: agent registry, GxP flags, study linkage",
+        knownGap: "No confirmed auto extraction",
+        caveat: "Manual / planned ingestion for prototype",
+        notes: "Manual registration path until automated connectors are confirmed.",
+        sortOrder: 5,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "salesforce-agentforce",
+        name: "Salesforce / Agentforce",
+        category: "CRM agent platform",
+        repositoryStatus: RepositoryStatus.PARKED,
+        ingestionMode: IngestionMode.UNKNOWN,
+        role: "Potential CRM agent inventory",
+        summary: "Parked due to coverage, ownership and connector gaps.",
+        metadataAvailable: "Unconfirmed agent inventory fields",
+        knownGap: "Coverage / ownership / connector gap",
+        caveat: null,
+        notes: "Revisit once ownership model and connector scope are clarified.",
+        sortOrder: 6,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "servicenow",
+        name: "ServiceNow",
+        category: "ITSM platform",
+        repositoryStatus: RepositoryStatus.PARKED,
+        ingestionMode: IngestionMode.UNKNOWN,
+        role: "Potential ITSM agent / workflow inventory",
+        summary: "Parked — not integrated into the repository prototype.",
+        metadataAvailable: "Not available via current connector",
+        knownGap: "Not integrated",
+        caveat: null,
+        notes: "ServiceNow MCP tools exist for agents, but platform inventory is not ingested.",
+        sortOrder: 7,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "sap-joule",
+        name: "SAP Joule",
+        category: "ERP assistant platform",
+        repositoryStatus: RepositoryStatus.PARKED,
+        ingestionMode: IngestionMode.UNKNOWN,
+        role: "Potential SAP assistant inventory",
+        summary: "Parked due to limited confirmed scope and volume.",
+        metadataAvailable: "Limited confirmed agent metadata",
+        knownGap: "Limited confirmed scope / volume",
+        caveat: null,
+        notes: "Keep parked until volume and ownership signals are clearer.",
+        sortOrder: 8,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "uipath",
+        name: "UiPath",
+        category: "Automation platform",
+        repositoryStatus: RepositoryStatus.PARKED,
+        ingestionMode: IngestionMode.UNKNOWN,
+        role: "Potential automation / agent inventory",
+        summary: "Parked — no confirmed active agent volume for repository intake.",
+        metadataAvailable: "Automation candidates only",
+        knownGap: "No confirmed active agent volume",
+        caveat: null,
+        notes: "Useful later for automation discovery; not an active agent feed now.",
+        sortOrder: 9,
+      },
+    }),
+    prisma.platformSource.create({
+      data: {
+        slug: "microsoft-copilot-studio",
+        name: "Microsoft Copilot Studio",
+        category: "Agent platform",
+        repositoryStatus: RepositoryStatus.PARKED,
+        ingestionMode: IngestionMode.UNKNOWN,
+        role: "Potential low-code agent inventory",
+        summary: "Parked due to unresolved governance ownership (different reason than volume).",
+        metadataAvailable: "Bot / copilot definitions where accessible",
+        knownGap: "Unresolved governance ownership",
+        caveat: "Different parking reason than other platforms — ownership / accountability gap",
+        notes: "Do not treat as volume-blocked; ownership model must be resolved first.",
+        sortOrder: 10,
+      },
+    }),
+  ]);
 
   // Relationships for Invoice Triage Agent
   await prisma.agentMcpServer.createMany({
     data: [
       { agentId: invoice.id, mcpServerId: sapMcp.id },
       { agentId: invoice.id, mcpServerId: snowMcp.id },
+      { agentId: invoice.id, mcpServerId: jiraMcp.id },
       { agentId: clinical.id, mcpServerId: clinicalMcp.id },
       { agentId: clinical.id, mcpServerId: pubmedMcp.id },
       { agentId: researchAgent.id, mcpServerId: pubmedMcp.id },
@@ -1558,6 +2786,11 @@ async function main() {
       { agentId: itsmAgent.id, mcpServerId: searchMcp.id },
       { agentId: supplier.id, mcpServerId: searchMcp.id },
       { agentId: qualityAgent.id, mcpServerId: clinicalMcp.id },
+      { agentId: financeOrchestrator.id, mcpServerId: sapMcp.id },
+      { agentId: financeOrchestrator.id, mcpServerId: snowMcp.id },
+      { agentId: exceptionRoutingAgent.id, mcpServerId: snowMcp.id },
+      { agentId: externalScientificSearch.id, mcpServerId: pubmedMcp.id },
+      { agentId: qualityEventSubAgent.id, mcpServerId: clinicalMcp.id },
     ],
   });
 
@@ -1582,6 +2815,11 @@ async function main() {
       { agentId: qualityAgent.id, skillId: anomalyDetection.id },
       { agentId: qualityAgent.id, skillId: humanEscalation.id },
       { agentId: vendorAgent.id, skillId: vendorMatching.id },
+      { agentId: financeOrchestrator.id, skillId: humanEscalation.id },
+      { agentId: exceptionRoutingAgent.id, skillId: humanEscalation.id },
+      { agentId: externalScientificSearch.id, skillId: clinicalLit.id },
+      { agentId: externalScientificSearch.id, skillId: summarization.id },
+      { agentId: qualityEventSubAgent.id, skillId: anomalyDetection.id },
     ],
   });
 
@@ -1601,6 +2839,11 @@ async function main() {
       { agentId: hrAgent.id, ruleId: approvedSources.id },
       { agentId: qualityAgent.id, ruleId: noExternalModel.id },
       { agentId: qualityAgent.id, ruleId: humanApproval.id },
+      { agentId: financeOrchestrator.id, ruleId: humanApproval.id },
+      { agentId: financeOrchestrator.id, ruleId: readOnlySap.id },
+      { agentId: exceptionRoutingAgent.id, ruleId: humanApproval.id },
+      { agentId: externalScientificSearch.id, ruleId: approvedSources.id },
+      { agentId: qualityEventSubAgent.id, ruleId: noExternalModel.id },
     ],
   });
 
@@ -1608,12 +2851,16 @@ async function main() {
     data: [
       { agentId: invoice.id, guideId: reuseGuide.id },
       { agentId: invoice.id, guideId: prodChecklist.id },
+      { agentId: invoice.id, guideId: emergencyShutdownGuide.id },
       { agentId: clinical.id, guideId: riskGuide.id },
       { agentId: clinical.id, guideId: raiChecklist.id },
       { agentId: supplier.id, guideId: oversightGuide.id },
       { agentId: knowledgeAgent.id, guideId: registerGuide.id },
       { agentId: vendorAgent.id, guideId: mcpGuide.id },
       { agentId: qualityAgent.id, guideId: lifecycleGuide.id },
+      { agentId: financeOrchestrator.id, guideId: emergencyShutdownGuide.id },
+      { agentId: financeOrchestrator.id, guideId: prodChecklist.id },
+      { agentId: exceptionRoutingAgent.id, guideId: reuseGuide.id },
     ],
   });
 
@@ -1621,15 +2868,24 @@ async function main() {
     data: [
       { agentId: invoice.id, hookId: riskReassessHook.id },
       { agentId: invoice.id, hookId: auditPublishHook.id },
+      { agentId: invoice.id, hookId: emergencyStopHook.id },
       { agentId: clinical.id, hookId: notifyReviewHook.id },
       { agentId: supplier.id, hookId: flagCostHook.id },
       { agentId: qualityAgent.id, hookId: disableCyberHook.id },
       { agentId: knowledgeAgent.id, hookId: syncMetaHook.id },
+      { agentId: financeOrchestrator.id, hookId: emergencyStopHook.id },
+      { agentId: financeOrchestrator.id, hookId: riskReassessHook.id },
+      { agentId: exceptionRoutingAgent.id, hookId: auditPublishHook.id },
     ],
   });
 
-  await prisma.agentDependency.create({
-    data: { agentId: invoice.id, dependsOnAgentId: vendorAgent.id },
+  await prisma.agentDependency.createMany({
+    data: [
+      { agentId: financeOrchestrator.id, dependsOnAgentId: invoice.id },
+      { agentId: invoice.id, dependsOnAgentId: vendorAgent.id },
+      { agentId: invoice.id, dependsOnAgentId: exceptionRoutingAgent.id },
+      { agentId: qualityAgent.id, dependsOnAgentId: qualityEventSubAgent.id },
+    ],
   });
 
   await prisma.accessRequest.createMany({
@@ -1718,31 +2974,64 @@ async function main() {
       {
         agentId: invoice.id,
         reason: "Annual review",
+        reviewType: "Annual Review",
+        priority: "Medium",
+        owner: "Anna Keller",
         dueDate: daysFromNow(43),
         status: ReviewStatus.DUE_SOON,
       },
       {
         agentId: clinical.id,
         reason: "Model version changed",
+        reviewType: "Model Change Review",
+        priority: "High",
+        owner: "Sofia Ramirez",
         dueDate: daysFromNow(0),
         status: ReviewStatus.OPEN,
       },
       {
         agentId: supplier.id,
         reason: "New data source detected",
+        reviewType: "Data Source Review",
+        priority: "High",
+        owner: "Thomas Berger",
         dueDate: daysAgo(5),
         status: ReviewStatus.OVERDUE,
       },
       {
         agentId: qualityAgent.id,
         reason: "GxP readiness checkpoint",
+        reviewType: "GxP Readiness",
+        priority: "Critical",
+        owner: "Martin Vogt",
         dueDate: daysFromNow(20),
         status: ReviewStatus.OPEN,
       },
       {
         agentId: knowledgeAgent.id,
         reason: "Periodic certification renewal",
+        reviewType: "Certification Renewal",
+        priority: "Low",
+        owner: "Sabine Holt",
         dueDate: daysFromNow(100),
+        status: ReviewStatus.OPEN,
+      },
+      {
+        agentId: financeOrchestrator.id,
+        reason: "Orchestrator composition review after product packaging",
+        reviewType: "Composition Review",
+        priority: "Medium",
+        owner: "Marcus Weber",
+        dueDate: daysFromNow(35),
+        status: ReviewStatus.OPEN,
+      },
+      {
+        agentId: exceptionRoutingAgent.id,
+        reason: "Sub-agent dependency validation",
+        reviewType: "Dependency Review",
+        priority: "Medium",
+        owner: "Anna Keller",
+        dueDate: daysFromNow(65),
         status: ReviewStatus.OPEN,
       },
     ],
@@ -1757,6 +3046,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Invoice Triage Agent",
         assetSlug: "invoice-triage-agent",
+        changedFields: "riskLevel,riskAssessmentStatus",
         agentId: invoice.id,
         createdAt: daysAgo(0),
       },
@@ -1767,6 +3057,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Invoice Triage Agent",
         assetSlug: "invoice-triage-agent",
+        changedFields: "version,lifecycleStage",
         agentId: invoice.id,
         createdAt: daysAgo(1),
       },
@@ -1777,6 +3068,7 @@ async function main() {
         assetType: AssetType.MCP_SERVER,
         assetName: "ServiceNow Workflow MCP",
         assetSlug: "servicenow-workflow-mcp",
+        changedFields: "mcpServers",
         agentId: invoice.id,
         mcpServerId: snowMcp.id,
         createdAt: daysAgo(2),
@@ -1788,6 +3080,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Clinical Trial Navigator",
         assetSlug: "clinical-trial-navigator",
+        changedFields: "businessOwner,businessOwnerEmail",
         agentId: clinical.id,
         createdAt: daysAgo(2),
       },
@@ -1798,6 +3091,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Invoice Triage Agent",
         assetSlug: "invoice-triage-agent",
+        changedFields: "certified",
         agentId: invoice.id,
         createdAt: daysAgo(3),
       },
@@ -1808,16 +3102,18 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Supplier Risk Copilot",
         assetSlug: "supplier-risk-copilot",
+        changedFields: "accessLevel",
         agentId: supplier.id,
         createdAt: daysAgo(4),
       },
       {
         title: "Risk classification updated",
-        description: "Quality Deviation Assistant classified as High Risk.",
+        description: "Quality Deviation Assistant classified as Mission Critical.",
         actor: "AI Governance Office",
         assetType: AssetType.AGENT,
         assetName: "Quality Deviation Assistant",
         assetSlug: "quality-deviation-assistant",
+        changedFields: "riskLevel",
         agentId: qualityAgent.id,
         createdAt: daysAgo(5),
       },
@@ -1828,6 +3124,7 @@ async function main() {
         assetType: AssetType.MCP_SERVER,
         assetName: "PubMed Research MCP",
         assetSlug: "pubmed-research-mcp",
+        changedFields: "mcpServers",
         mcpServerId: pubmedMcp.id,
         createdAt: daysAgo(6),
       },
@@ -1838,6 +3135,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Automation Discovery Agent",
         assetSlug: "automation-discovery-agent",
+        changedFields: "lifecycleStage",
         createdAt: daysAgo(7),
       },
       {
@@ -1847,6 +3145,7 @@ async function main() {
         assetType: AssetType.SKILL,
         assetName: "Human Escalation",
         assetSlug: "human-escalation",
+        changedFields: "status,version",
         createdAt: daysAgo(8),
       },
       {
@@ -1856,6 +3155,7 @@ async function main() {
         assetType: AssetType.RULE,
         assetName: "No External Model for Confidential Data",
         assetSlug: "no-external-model-confidential",
+        changedFields: "status",
         createdAt: daysAgo(9),
       },
       {
@@ -1865,6 +3165,7 @@ async function main() {
         assetType: AssetType.HOOK,
         assetName: "Risk Reassessment on Tool Change",
         assetSlug: "risk-reassessment-on-tool-change",
+        changedFields: "enabled",
         createdAt: daysAgo(10),
       },
       {
@@ -1874,6 +3175,7 @@ async function main() {
         assetType: AssetType.GUIDE,
         assetName: "Reuse Before Build Guide",
         assetSlug: "reuse-before-build-guide",
+        changedFields: "content",
         createdAt: daysAgo(11),
       },
       {
@@ -1883,6 +3185,7 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Enterprise Knowledge Assistant",
         assetSlug: "enterprise-knowledge-assistant",
+        changedFields: "version,tags",
         agentId: knowledgeAgent.id,
         createdAt: daysAgo(1),
       },
@@ -1893,8 +3196,88 @@ async function main() {
         assetType: AssetType.AGENT,
         assetName: "Clinical Trial Navigator",
         assetSlug: "clinical-trial-navigator",
+        changedFields: null,
         agentId: clinical.id,
         createdAt: daysAgo(1),
+      },
+      {
+        title: "Agent product associated",
+        description: "Invoice Triage Agent linked as Primary Agent in Finance Operations Assistant.",
+        actor: "Marcus Weber",
+        assetType: AssetType.AGENT_PRODUCT,
+        assetName: "Finance Operations Assistant",
+        assetSlug: "finance-operations-assistant",
+        changedFields: "agents,role",
+        agentId: invoice.id,
+        agentProductId: financeProduct.id,
+        createdAt: daysAgo(1),
+      },
+      {
+        title: "Agent product published",
+        description: "Finance Operations Assistant product published with four composed agents.",
+        actor: "Anna Keller",
+        assetType: AssetType.AGENT_PRODUCT,
+        assetName: "Finance Operations Assistant",
+        assetSlug: "finance-operations-assistant",
+        changedFields: "lifecycleStage,certified",
+        agentProductId: financeProduct.id,
+        createdAt: daysAgo(2),
+      },
+      {
+        title: "Use case linked",
+        description: "UC-FIN-023 linked to Invoice Triage and related finance agents.",
+        actor: "AI Governance Office",
+        assetType: AssetType.USE_CASE,
+        assetName: "Automated Invoice Intake & Routing",
+        assetSlug: "uc-fin-023-automated-invoice-intake",
+        changedFields: "useCaseId",
+        agentId: invoice.id,
+        createdAt: daysAgo(2),
+      },
+      {
+        title: "Clinical product associated",
+        description: "Clinical Trial Navigator linked to Clinical Study Support Suite.",
+        actor: "Jonas Brandt",
+        assetType: AssetType.AGENT_PRODUCT,
+        assetName: "Clinical Study Support Suite",
+        assetSlug: "clinical-study-support-suite",
+        changedFields: "agents,role",
+        agentId: clinical.id,
+        agentProductId: clinicalProduct.id,
+        createdAt: daysAgo(3),
+      },
+      {
+        title: "Knowledge product associated",
+        description: "Enterprise Knowledge Assistant linked to Enterprise Knowledge Copilot.",
+        actor: "Kai Mendel",
+        assetType: AssetType.AGENT_PRODUCT,
+        assetName: "Enterprise Knowledge Copilot",
+        assetSlug: "enterprise-knowledge-copilot",
+        changedFields: "agents,role",
+        agentId: knowledgeAgent.id,
+        agentProductId: knowledgeProduct.id,
+        createdAt: daysAgo(3),
+      },
+      {
+        title: "Emergency shutdown guide published",
+        description: "Emergency Shutdown Guide added for production agent owners.",
+        actor: "Platform Operations",
+        assetType: AssetType.GUIDE,
+        assetName: "Emergency Shutdown Guide",
+        assetSlug: "emergency-shutdown-guide",
+        changedFields: "status",
+        createdAt: daysAgo(4),
+      },
+      {
+        title: "Emergency stop hook enabled",
+        description: "Create Critical Review After Emergency Stop enabled for finance agents.",
+        actor: "AI Governance Office",
+        assetType: AssetType.HOOK,
+        assetName: "Create Critical Review After Emergency Stop",
+        assetSlug: "create-critical-review-after-emergency-stop",
+        changedFields: "enabled",
+        agentId: invoice.id,
+        createdAt: daysAgo(4),
       },
     ],
   });
@@ -1922,12 +3305,682 @@ async function main() {
         assetName: pdfExtract.name,
         skillId: pdfExtract.id,
       },
+      {
+        assetType: AssetType.AGENT_PRODUCT,
+        assetId: financeProduct.id,
+        assetSlug: financeProduct.slug,
+        assetName: financeProduct.name,
+        agentProductId: financeProduct.id,
+      },
+      {
+        assetType: AssetType.USE_CASE,
+        assetId: ucInvoice.id,
+        assetSlug: ucInvoice.slug,
+        assetName: ucInvoice.name,
+        useCaseId: ucInvoice.id,
+      },
+      {
+        assetType: AssetType.AGENT_PRODUCT,
+        assetId: knowledgeProduct.id,
+        assetSlug: knowledgeProduct.slug,
+        assetName: knowledgeProduct.name,
+        agentProductId: knowledgeProduct.id,
+      },
     ],
   });
 
+  // Data domains, catalog data assets / products, glossary, CAB changes
+  const dataDomains = await Promise.all([
+    prisma.dataDomain.create({
+      data: {
+        slug: "finance",
+        name: "Finance",
+        description: "Financial master data, AP/AR processes and finance analytics assets.",
+        owner: "Anna Keller",
+        ownerEmail: "anna.keller@example.com",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        tags: "Finance,AP,ERP",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "procurement",
+        name: "Procurement",
+        description: "Supplier, sourcing and procurement risk data domain.",
+        owner: "Thomas Berger",
+        ownerEmail: "thomas.berger@example.com",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        tags: "Procurement,Suppliers",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "research-and-development",
+        name: "Research & Development",
+        description: "Scientific literature, R&D knowledge and discovery data assets.",
+        owner: "Priya Shah",
+        ownerEmail: "priya.shah@example.com",
+        businessArea: BusinessArea.LIFE_SCIENCE,
+        tags: "R&D,Research",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "clinical-operations",
+        name: "Clinical Operations",
+        description: "Clinical trial protocols, study metadata and operational documentation.",
+        owner: "Sofia Ramirez",
+        ownerEmail: "sofia.ramirez@example.com",
+        businessArea: BusinessArea.HEALTHCARE,
+        tags: "Clinical,Trials",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "quality",
+        name: "Quality",
+        description: "Quality events, deviations, CAPA and GxP-relevant quality datasets.",
+        owner: "Martin Vogt",
+        ownerEmail: "martin.vogt@example.com",
+        businessArea: BusinessArea.HEALTHCARE,
+        tags: "Quality,GxP",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "manufacturing",
+        name: "Manufacturing",
+        description: "Product master, manufacturing operations and plant data products.",
+        owner: "Derek Lang",
+        ownerEmail: "derek.lang@example.com",
+        businessArea: BusinessArea.ELECTRONICS,
+        tags: "Manufacturing,Product",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "hr",
+        name: "HR",
+        description: "HR policies, employee knowledge and workforce enablement content.",
+        owner: "Julia Reinhardt",
+        ownerEmail: "julia.reinhardt@example.com",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        tags: "HR,Policy",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "commercial",
+        name: "Commercial",
+        description: "Commercial customer, account and go-to-market knowledge assets.",
+        owner: "Nina Oswald",
+        ownerEmail: "nina.oswald@example.com",
+        businessArea: BusinessArea.HEALTHCARE,
+        tags: "Commercial,CRM",
+      },
+    }),
+    prisma.dataDomain.create({
+      data: {
+        slug: "legal-and-compliance",
+        name: "Legal & Compliance",
+        description: "Legal, compliance and regulatory policy knowledge domain.",
+        owner: "Claudia Stein",
+        ownerEmail: "claudia.stein@example.com",
+        businessArea: BusinessArea.ENABLING_FUNCTIONS,
+        tags: "Legal,Compliance",
+      },
+    }),
+  ]);
+
+  const [
+    financeDomain,
+    procurementDomain,
+    rndDomain,
+    clinicalDomain,
+    qualityDomain,
+    manufacturingDomain,
+    hrDomain,
+  ] = dataDomains;
+
+  const catalogDataAssets = await Promise.all([
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "sap-vendor-master",
+        name: "SAP Vendor Master",
+        shortDescription: "Approved vendor master records from SAP Finance.",
+        description:
+          "Enterprise vendor master data used for invoice matching, vendor validation and AP exception routing.",
+        assetType: "Master Data",
+        classification: "Internal",
+        domainName: "Finance",
+        owner: "Anna Keller",
+        ownerEmail: "anna.keller@example.com",
+        sourceSystem: "SAP S/4HANA",
+        sensitivity: "Business confidential",
+        tags: "SAP,Vendors,Finance",
+        domainId: financeDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "finance-policy-knowledge-base",
+        name: "Finance Policy Knowledge Base",
+        shortDescription: "AP policies, exception rules and finance playbooks.",
+        description:
+          "Governed knowledge base of accounts payable policies, exception handling rules and operational finance procedures.",
+        assetType: "Knowledge Base",
+        classification: "Internal",
+        domainName: "Finance",
+        owner: "Anna Keller",
+        ownerEmail: "anna.keller@example.com",
+        sourceSystem: "SharePoint / Knowledge Platform",
+        sensitivity: "Internal",
+        tags: "Finance,Policy,Knowledge",
+        domainId: financeDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "clinical-trial-protocol-library",
+        name: "Clinical Trial Protocol Library",
+        shortDescription: "Approved clinical trial protocols and study documentation.",
+        description:
+          "Controlled library of clinical trial protocols and related study documentation for clinical operations agents.",
+        assetType: "Document Library",
+        classification: "Confidential",
+        domainName: "Clinical Operations",
+        owner: "Sofia Ramirez",
+        ownerEmail: "sofia.ramirez@example.com",
+        sourceSystem: "Clinical Knowledge Hub",
+        sensitivity: "Confidential",
+        tags: "Clinical,Protocols,GxP",
+        domainId: clinicalDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "scientific-literature-index",
+        name: "Scientific Literature Index",
+        shortDescription: "Indexed scientific literature and abstract metadata.",
+        description:
+          "Curated index of scientific literature used by research assistants for discovery and summarization.",
+        assetType: "Index",
+        classification: "Public / Licensed",
+        domainName: "Research & Development",
+        owner: "Priya Shah",
+        ownerEmail: "priya.shah@example.com",
+        sourceSystem: "PubMed / R&D Knowledge Services",
+        sensitivity: "Low",
+        tags: "Research,Literature",
+        domainId: rndDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "hr-policy-repository",
+        name: "HR Policy Repository",
+        shortDescription: "Enterprise HR policy and employee handbook content.",
+        description:
+          "Approved HR policy repository used by HR assistants for policy Q&A under human oversight.",
+        assetType: "Knowledge Base",
+        classification: "Internal",
+        domainName: "HR",
+        owner: "Julia Reinhardt",
+        ownerEmail: "julia.reinhardt@example.com",
+        sourceSystem: "SharePoint HR",
+        sensitivity: "Internal",
+        tags: "HR,Policy",
+        domainId: hrDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "quality-event-dataset",
+        name: "Quality Event Dataset",
+        shortDescription: "Quality deviation and CAPA event dataset.",
+        description:
+          "Dataset of quality events, deviations and CAPA context for quality investigation support.",
+        assetType: "Dataset",
+        classification: "Confidential",
+        domainName: "Quality",
+        owner: "Martin Vogt",
+        ownerEmail: "martin.vogt@example.com",
+        sourceSystem: "Quality Management System",
+        sensitivity: "High",
+        tags: "Quality,Deviation,GxP",
+        domainId: qualityDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "product-master",
+        name: "Product Master",
+        shortDescription: "Enterprise product master data for manufacturing and commercial use.",
+        description:
+          "Canonical product master records spanning manufacturing and commercial product hierarchies.",
+        assetType: "Master Data",
+        classification: "Internal",
+        domainName: "Manufacturing",
+        owner: "Derek Lang",
+        ownerEmail: "derek.lang@example.com",
+        sourceSystem: "SAP / PLM",
+        sensitivity: "Business confidential",
+        tags: "Product,Master Data",
+        domainId: manufacturingDomain.id,
+      },
+    }),
+    prisma.catalogDataAsset.create({
+      data: {
+        slug: "supplier-risk-dataset",
+        name: "Supplier Risk Dataset",
+        shortDescription: "Aggregated supplier risk indicators and scorecards.",
+        description:
+          "Procurement risk dataset consolidating supplier performance, risk signals and follow-up status.",
+        assetType: "Dataset",
+        classification: "Internal",
+        domainName: "Procurement",
+        owner: "Thomas Berger",
+        ownerEmail: "thomas.berger@example.com",
+        sourceSystem: "Procurement Analytics",
+        sensitivity: "Business confidential",
+        tags: "Suppliers,Risk,Procurement",
+        domainId: procurementDomain.id,
+      },
+    }),
+  ]);
+
+  const [sapVendorMaster, financePolicyKb] = catalogDataAssets;
+
+  const catalogDataProducts = await Promise.all([
+    prisma.catalogDataProduct.create({
+      data: {
+        slug: "supplier-360-data-product",
+        name: "Supplier 360 Data Product",
+        shortDescription: "Unified supplier profile and risk signals for procurement.",
+        description:
+          "Data product combining supplier master, risk scorecards and follow-up actions for procurement specialists.",
+        domainName: "Procurement",
+        owner: "Thomas Berger",
+        ownerEmail: "thomas.berger@example.com",
+        classification: "Internal",
+        platform: "Data Lakehouse",
+        rating: 4.3,
+        tags: "Suppliers,360,Procurement",
+        domainId: procurementDomain.id,
+      },
+    }),
+    prisma.catalogDataProduct.create({
+      data: {
+        slug: "clinical-research-evidence-product",
+        name: "Clinical Research Evidence Product",
+        shortDescription: "Governed clinical evidence and protocol context product.",
+        description:
+          "Curated data product packaging clinical protocols, trial metadata and approved evidence for clinical operations agents.",
+        domainName: "Clinical Operations",
+        owner: "Sofia Ramirez",
+        ownerEmail: "sofia.ramirez@example.com",
+        classification: "Confidential",
+        platform: "HIVE",
+        rating: 4.5,
+        tags: "Clinical,Evidence,Research",
+        domainId: clinicalDomain.id,
+      },
+    }),
+    prisma.catalogDataProduct.create({
+      data: {
+        slug: "finance-invoice-data-product",
+        name: "Finance Invoice Data Product",
+        shortDescription: "Invoice, vendor and AP exception data product for finance agents.",
+        description:
+          "Finance data product exposing invoice headers, vendor references and exception routing context for Accounts Payable automation.",
+        domainName: "Finance",
+        owner: "Anna Keller",
+        ownerEmail: "anna.keller@example.com",
+        classification: "Internal",
+        platform: "UPTIMIZE Foundry",
+        rating: 4.7,
+        tags: "Finance,Invoices,AP",
+        domainId: financeDomain.id,
+      },
+    }),
+    prisma.catalogDataProduct.create({
+      data: {
+        slug: "employee-policy-knowledge-product",
+        name: "Employee Policy Knowledge Product",
+        shortDescription: "HR policy knowledge product for employee self-service assistants.",
+        description:
+          "Knowledge data product packaging approved HR policies and handbook content for governed employee Q&A.",
+        domainName: "HR",
+        owner: "Julia Reinhardt",
+        ownerEmail: "julia.reinhardt@example.com",
+        classification: "Internal",
+        platform: "myGPT",
+        rating: 4.1,
+        tags: "HR,Policy,Knowledge",
+        domainId: hrDomain.id,
+      },
+    }),
+  ]);
+
+  const financeInvoiceProduct = catalogDataProducts.find(
+    (p) => p.slug === "finance-invoice-data-product"
+  )!;
+
+  await prisma.agentCatalogDataAsset.createMany({
+    data: [
+      { agentId: invoice.id, dataAssetId: sapVendorMaster.id, role: "Consumes" },
+      { agentId: invoice.id, dataAssetId: financePolicyKb.id, role: "Consumes" },
+    ],
+  });
+
+  await prisma.agentCatalogDataProduct.createMany({
+    data: [{ agentId: invoice.id, dataProductId: financeInvoiceProduct.id, role: "Consumes" }],
+  });
+
+  const glossaryTerms = await Promise.all(
+    [
+      {
+        slug: "ai-agent",
+        name: "AI Agent",
+        shortDescription: "An autonomous or semi-autonomous software actor that pursues a goal.",
+        definition:
+          "An AI Agent is a governed software component that uses models, tools and policies to perform tasks on behalf of a user or process, typically with defined oversight and escalation.",
+        category: "Core Concepts",
+        relatedTerms: "Agent Asset,Autonomy Level,Human Oversight",
+        tags: "Agent,Core",
+      },
+      {
+        slug: "agent-asset",
+        name: "Agent Asset",
+        shortDescription: "A reusable registered agent component in the enterprise catalog.",
+        definition:
+          "An Agent Asset is a catalogued AI agent with ownership, risk, runtime and dependency metadata that can be reused across use cases and agent products.",
+        category: "Core Concepts",
+        relatedTerms: "AI Agent,Agent Product,Use Case",
+        tags: "Catalog,Asset",
+      },
+      {
+        slug: "agent-product",
+        name: "Agent Product",
+        shortDescription: "A packaged composition of agents delivered for a business outcome.",
+        definition:
+          "An Agent Product packages one or more Agent Assets (primary, supporting or sub-agents) into a business-facing offering with shared ownership and value narrative.",
+        category: "Core Concepts",
+        relatedTerms: "Agent Asset,Agent Orchestrator,Sub-Agent",
+        tags: "Catalog,Product",
+      },
+      {
+        slug: "mcp-server",
+        name: "MCP Server",
+        shortDescription: "A Model Context Protocol server exposing tools to agents.",
+        definition:
+          "An MCP Server provides a governed endpoint that exposes tools and resources agents can invoke under authentication, classification and environment controls.",
+        category: "Platform",
+        relatedTerms: "MCP Tool,Declared Resources,Observed Resources",
+        tags: "MCP,Platform",
+      },
+      {
+        slug: "mcp-tool",
+        name: "MCP Tool",
+        shortDescription: "A discrete capability exposed by an MCP server.",
+        definition:
+          "An MCP Tool is a named operation on an MCP Server (for example search_invoices or create_issue) that an agent may call subject to policy and human oversight rules.",
+        category: "Platform",
+        relatedTerms: "MCP Server,Skill,Guardrail",
+        tags: "MCP,Tools",
+      },
+      {
+        slug: "a2a",
+        name: "A2A",
+        shortDescription: "Agent-to-Agent collaboration pattern.",
+        definition:
+          "A2A (Agent-to-Agent) describes patterns where agents delegate, coordinate or exchange context with other agents under orchestration and governance controls.",
+        category: "Architecture",
+        relatedTerms: "Agent Orchestrator,Sub-Agent,Agent Product",
+        tags: "Architecture,A2A",
+      },
+      {
+        slug: "skill",
+        name: "Skill",
+        shortDescription: "A reusable capability module that agents can compose.",
+        definition:
+          "A Skill is a reusable functional building block (for example document classification or vendor matching) that can be attached to multiple agents.",
+        category: "Platform",
+        relatedTerms: "AI Agent,MCP Tool,Guardrail",
+        tags: "Skills,Reusable",
+      },
+      {
+        slug: "guardrail",
+        name: "Guardrail",
+        shortDescription: "A policy or control that constrains agent behavior.",
+        definition:
+          "A Guardrail is a rule, check or control (for example human approval, redaction or approved sources) that limits what an agent may do or how outputs are used.",
+        category: "Governance",
+        relatedTerms: "Human Oversight,Responsible AI,Risk Assessment",
+        tags: "Governance,Rules",
+      },
+      {
+        slug: "autonomy-level",
+        name: "Autonomy Level",
+        shortDescription: "How independently an agent may act without human intervention.",
+        definition:
+          "Autonomy Level describes the degree of independent action permitted for an agent, ranging from advisory assistance to human-in-the-loop or supervised autonomous execution.",
+        category: "Governance",
+        relatedTerms: "Human Oversight,Guardrail,AI Agent",
+        tags: "Governance,Autonomy",
+      },
+      {
+        slug: "human-oversight",
+        name: "Human Oversight",
+        shortDescription: "Human review or approval required for agent actions.",
+        definition:
+          "Human Oversight is the requirement that a person reviews, approves or can interrupt agent actions, especially for high-value, high-risk or regulated outcomes.",
+        category: "Governance",
+        relatedTerms: "Autonomy Level,Guardrail,Responsible AI",
+        tags: "Governance,HITL",
+      },
+      {
+        slug: "use-case",
+        name: "Use Case",
+        shortDescription: "A business problem statement linked to agent solutions.",
+        definition:
+          "A Use Case describes the business need, capability and expected outcome that one or more agents or agent products are intended to address.",
+        category: "Core Concepts",
+        relatedTerms: "Agent Asset,Agent Product,Value Benefit",
+        tags: "Business,Catalog",
+      },
+      {
+        slug: "responsible-ai",
+        name: "Responsible AI",
+        shortDescription: "Assessment of fairness, safety, transparency and oversight.",
+        definition:
+          "Responsible AI covers the assessment and controls that ensure agents are used ethically and safely, including human oversight, transparency, auditability and impact review.",
+        category: "Governance",
+        relatedTerms: "Risk Assessment,Human Oversight,Guardrail",
+        tags: "Governance,RAI",
+      },
+      {
+        slug: "agent-orchestrator",
+        name: "Agent Orchestrator",
+        shortDescription: "An agent that coordinates other agents in a workflow.",
+        definition:
+          "An Agent Orchestrator routes work across primary and sub-agents, manages handoffs and enforces composition-level policies for an Agent Product.",
+        category: "Architecture",
+        relatedTerms: "A2A,Sub-Agent,Agent Product",
+        tags: "Architecture,Orchestration",
+      },
+      {
+        slug: "sub-agent",
+        name: "Sub-Agent",
+        shortDescription: "A supporting agent invoked as part of a larger composition.",
+        definition:
+          "A Sub-Agent is an Agent Asset that performs a specialized step within a broader agent product or orchestrated workflow rather than acting as the primary user-facing agent.",
+        category: "Architecture",
+        relatedTerms: "Agent Orchestrator,Agent Product,A2A",
+        tags: "Architecture,Composition",
+      },
+      {
+        slug: "gxp",
+        name: "GxP",
+        shortDescription: "Good practice regulations relevant to regulated life-science processes.",
+        definition:
+          "GxP refers to quality and compliance frameworks (such as GCP, GMP) that impose documentation, validation and control requirements on systems and agents used in regulated contexts.",
+        category: "Compliance",
+        relatedTerms: "Risk Assessment,Responsible AI,Human Oversight",
+        tags: "Compliance,GxP",
+      },
+      {
+        slug: "risk-assessment",
+        name: "Risk Assessment",
+        shortDescription: "Structured evaluation of agent impact, data and autonomy risks.",
+        definition:
+          "Risk Assessment evaluates an agent's data sensitivity, autonomy, business criticality and regulatory relevance to determine risk level, oversight and review cadence.",
+        category: "Governance",
+        relatedTerms: "Responsible AI,Guardrail,Autonomy Level",
+        tags: "Governance,Risk",
+      },
+      {
+        slug: "knowledge-source",
+        name: "Knowledge Source",
+        shortDescription: "An approved corpus or system an agent may retrieve from.",
+        definition:
+          "A Knowledge Source is a governed repository, dataset or document collection that an agent is permitted to ground responses on, subject to classification and access controls.",
+        category: "Data",
+        relatedTerms: "MCP Server,Data Asset,Use Case",
+        tags: "Data,Knowledge",
+      },
+    ].map((term) => prisma.glossaryTerm.create({ data: term }))
+  );
+
+  const cabChanges = await Promise.all([
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-invoice-model-version-change",
+        title: "Invoice Triage Agent — model version change",
+        changeSummary:
+          "Proposed update of the production model endpoint from the previously approved GPT-4o baseline to a newer Azure-hosted revision.",
+        changeType: "Model version changed",
+        riskImpact: "Medium",
+        submittedBy: "David Klein",
+        reviewGroup: "Finance ARB",
+        status: "Pending",
+        submittedAt: daysAgo(3),
+        agentId: invoice.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-clinical-confidential-data-source",
+        title: "Clinical Trial Navigator — new Confidential data source",
+        changeSummary:
+          "Request to attach a new Confidential clinical document corpus as an approved knowledge source for protocol navigation.",
+        changeType: "New Confidential data source",
+        riskImpact: "High",
+        submittedBy: "Jonas Brandt",
+        reviewGroup: "Clinical Governance CAB",
+        status: "Review required",
+        submittedAt: daysAgo(5),
+        agentId: clinical.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-supplier-autonomy-change",
+        title: "Supplier Risk Copilot — autonomy Supervised → Autonomous",
+        changeSummary:
+          "Proposed autonomy change from Supervised to Autonomous for selected low-risk follow-up recommendations.",
+        changeType: "Autonomy changed",
+        riskImpact: "High",
+        submittedBy: "Elena Novak",
+        reviewGroup: "Procurement CAB",
+        status: "Review required",
+        submittedAt: daysAgo(7),
+        agentId: supplier.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-invoice-jira-mcp-added",
+        title: "Invoice Triage Agent — Jira MCP added",
+        changeSummary:
+          "Declared Jira MCP for exception ticket creation; observed resource inventory updated accordingly.",
+        changeType: "MCP added",
+        riskImpact: "Medium",
+        submittedBy: "Marcus Weber",
+        reviewGroup: "Platform CAB",
+        status: "Completed",
+        submittedAt: daysAgo(21),
+        reviewedAt: daysAgo(14),
+        agentId: invoice.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-quality-data-classification",
+        title: "Quality Deviation Assistant — data classification uplift",
+        changeSummary:
+          "Data classification review proposing uplift of linked quality event context from Internal to Confidential.",
+        changeType: "Data classification changed",
+        riskImpact: "High",
+        submittedBy: "Ines Braun",
+        reviewGroup: "Quality / GxP CAB",
+        status: "Review required",
+        submittedAt: daysAgo(4),
+        agentId: qualityAgent.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-finance-product-composition",
+        title: "Finance Operations Assistant — composition changed",
+        changeSummary:
+          "Agent product composition update adding Exception Routing as a supporting sub-agent under the finance orchestrator.",
+        changeType: "Composition changed",
+        riskImpact: "Medium",
+        submittedBy: "Emily Stone",
+        reviewGroup: "Finance ARB",
+        status: "Pending",
+        submittedAt: daysAgo(2),
+        agentId: financeOrchestrator.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-invoice-emergency-strategy",
+        title: "Invoice Triage Agent — emergency shutdown strategy update",
+        changeSummary:
+          "Documented auto-disable and escalate path aligned with quarterly review cadence and platform kill-switch testing.",
+        changeType: "Emergency strategy updated",
+        riskImpact: "Medium",
+        submittedBy: "David Klein",
+        reviewGroup: "Platform CAB",
+        status: "Completed",
+        submittedAt: daysAgo(40),
+        reviewedAt: daysAgo(35),
+        agentId: invoice.id,
+      },
+    }),
+    prisma.cabChange.create({
+      data: {
+        slug: "cab-regulatory-mcp-added",
+        title: "Regulatory Document Reviewer — approved-sources MCP linkage",
+        changeSummary:
+          "Request to add an additional approved document MCP for regulatory package completeness checks.",
+        changeType: "MCP added",
+        riskImpact: "High",
+        submittedBy: "Benito Ruiz",
+        reviewGroup: "Regulatory CAB",
+        status: "Review required",
+        submittedAt: daysAgo(6),
+        agentId: regulatoryAgent.id,
+      },
+    }),
+  ]);
+
+  const agentCount = 3 + moreAgents.length;
   console.log("Seed completed successfully.");
   console.log(
-    `Agents: ${1 + 1 + 1 + moreAgents.length}, MCP: ${mcpServers.length}, Skills: ${skills.length}, Rules: ${rules.length}`
+    `Agents: ${agentCount}, Products: ${agentProducts.length}, Use cases: ${useCases.length}, Platforms: ${platformSources.length}, MCP: ${mcpServers.length}, Skills: ${skills.length}, Rules: ${rules.length}, Domains: ${dataDomains.length}, Data assets: ${catalogDataAssets.length}, Data products: ${catalogDataProducts.length}, Glossary: ${glossaryTerms.length}, CAB: ${cabChanges.length}`
   );
 }
 

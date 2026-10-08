@@ -23,17 +23,21 @@ export function ActivityTimeline({
         const href =
           item.assetSlug && item.assetType === "AGENT"
             ? `/agents/${item.assetSlug}`
-            : item.assetSlug && item.assetType === "MCP_SERVER"
-              ? `/mcp-servers/${item.assetSlug}`
-              : item.assetSlug && item.assetType === "SKILL"
-                ? `/skills/${item.assetSlug}`
-                : item.assetSlug && item.assetType === "RULE"
-                  ? `/rules/${item.assetSlug}`
-                  : item.assetSlug && item.assetType === "GUIDE"
-                    ? `/guides/${item.assetSlug}`
-                    : item.assetSlug && item.assetType === "HOOK"
-                      ? `/hooks/${item.assetSlug}`
-                      : null;
+            : item.assetSlug && item.assetType === "AGENT_PRODUCT"
+              ? `/agent-products/${item.assetSlug}`
+              : item.assetSlug && item.assetType === "USE_CASE"
+                ? `/use-cases/${item.assetSlug}`
+                : item.assetSlug && item.assetType === "MCP_SERVER"
+                  ? `/mcp-servers/${item.assetSlug}`
+                  : item.assetSlug && item.assetType === "SKILL"
+                    ? `/skills/${item.assetSlug}`
+                    : item.assetSlug && item.assetType === "RULE"
+                      ? `/rules/${item.assetSlug}`
+                      : item.assetSlug && item.assetType === "GUIDE"
+                        ? `/guides/${item.assetSlug}`
+                        : item.assetSlug && item.assetType === "HOOK"
+                          ? `/hooks/${item.assetSlug}`
+                          : null;
 
         return (
           <li key={item.id} className="relative flex gap-4 pb-6">

@@ -9,9 +9,10 @@ Isoliertes Deploy auf dem Shared Testserver. Co-Tenants HOR und DERBYSTAR werden
 | Host | SRV00209 · `10.1.101.132` (VPN) |
 | Remote-Pfad | `~/ai-agent-central/` |
 | Compose-Projekt | `ai-agent-central` |
-| Container | `ai-agent-central-app-1` |
-| Host-Port | **3002** → Container `3000` |
-| Volume | `ai-agent-central_ai-agent-central_data` (SQLite) |
+| Container | `ai-agent-central-app-1`, `ai-agent-central-db-1` |
+| Host-Port App | **3002** → Container `3000` |
+| Host-Port DB | **5433** → Container `5432` (optional lokal) |
+| Volume | `ai-agent-central_agentcentral_pgdata` (PostgreSQL) |
 | URL | http://10.1.101.132:3002 |
 | nginx/TLS | keines |
 
@@ -20,8 +21,8 @@ Isoliertes Deploy auf dem Shared Testserver. Co-Tenants HOR und DERBYSTAR werden
 ```bash
 cd ~/ai-agent-central
 
-# Start
-docker compose -p ai-agent-central up -d
+# Start (app + postgres)
+docker compose -p ai-agent-central up -d --build
 
 # Stop (nur dieses Projekt)
 docker compose -p ai-agent-central down
@@ -38,14 +39,16 @@ cd ~/ai-agent-central
 docker compose -p ai-agent-central up -d --build
 ```
 
-## DB neu seeden (löscht nur eigene Demo-Daten)
+## DB neu seeden (löscht Demo-Daten)
 
 ```bash
 cd ~/ai-agent-central
 docker compose -p ai-agent-central down
-docker volume rm ai-agent-central_ai-agent-central_data
-docker compose -p ai-agent-central up -d
+docker volume rm ai-agent-central_agentcentral_pgdata
+docker compose -p ai-agent-central up -d --build
 ```
+
+Entrypoint führt bei jedem Start `prisma db push` + seed aus.
 
 ## Nicht anfassen
 
